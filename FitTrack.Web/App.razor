@@ -1,0 +1,31 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
+<CascadingAuthenticationState>
+    <AuthorizeView>
+        <Authorized>
+            <Router AppAssembly="@typeof(App).Assembly">
+                <Found Context="routeData">
+                    <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Shared.MainLayout)" />
+                    <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+                </Found>
+                <NotFound>
+                    <LayoutView Layout="@typeof(Shared.MainLayout)">
+                        <p>Sorry, there's nothing at this address.</p>
+                    </LayoutView>
+                </NotFound>
+            </Router>
+        </Authorized>
+        <NotAuthorized>
+            <LayoutView Layout="@typeof(Shared.MainLayout)">
+                <div class="card" style="margin:2rem;">
+                    <h1>Sign in required</h1>
+                    <p>You need to sign in with your Entra ID account to use FitTrack.</p>
+                    <p><a class="btn" href="MicrosoftIdentity/Account/SignIn">Sign in</a></p>
+                </div>
+            </LayoutView>
+        </NotAuthorized>
+        <Authorizing>
+            <p style="margin:2rem;">Authorizing...</p>
+        </Authorizing>
+    </AuthorizeView>
+</CascadingAuthenticationState>

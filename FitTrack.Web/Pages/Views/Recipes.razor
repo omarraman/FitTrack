@@ -1,0 +1,164 @@
+@page "/recipes"
+@inject IRecipeService RecipeSvc
+@inject IFoodService FoodSvc
+
+<h1>Recipes</h1>
+
+<div class="card">
+    <div class="card-row">
+        <h3>Your recipes</h3>
+        <button class="btn" @onclick="StartNew">New recipe</button>
+    </div>
+    @if (_recipes.Count == 0)
+    {
+        <p style="color: var(--text-dim);">No recipes yet.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead><tr><th>Name</th><th>Servings</th><th>Per serving</th><th>Total</th><th style="width:200px;"></th></tr></thead>
+            <tbody>
+                @foreach (var r in _recipes)
+                {
+                    <tr>
+                        <td>@r.Name</td>
+                        <td>@r.Servings</td>
+                        <td>@r.PerServingCalories kcal · P@(r.PerServingProtein) / C@(r.PerServingCarbs) / F@(r.PerServingFat)</td>
+                        <td>@r.TotalCalories kcal · P@(r.TotalProtein) / C@(r.TotalCarbs) / F@(r.TotalFat)</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" @onclick="() => Edit(r)">Edit</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => Delete(r.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@if (_editing is not null)
+{
+    <div class="card">
+        <h3>@(_editingId is null ? "New recipe" : "Edit recipe")</h3>
+        <div class="form-row">
+            <label>Name</label>
+            <input @bind="_editing.Name" style="flex: 1; max-width: 400px;" />
+            <label style="margin-left: 20px;">Servings</label>
+            <input type="number" min="1" @bind="_editing.Servings" />
+        </div>
+        <div class="form-row">
+            <label>Description</label>
+            <input @bind="_editing.Description" style="flex: 1; max-width: 600px;" />
+        </div>
+
+        <h3 style="margin-top: 20px;">Ingredients</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Food</th><th>Grams</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in _editing.Ingredients)
+                {
+                    var food = _foods.FirstOrDefault(f => f.Id == i.FoodId);
+                    var factor = food is null ? 0m : i.Grams / 100m;
+                    <tr>
+                        <td>
+                            <select @bind="i.FoodId" style="min-width: 250px;">
+                                <option value="0">-- pick food --</option>
+                                @foreach (var f in _foods)
+                                {
+                                    <option value="@f.Id">@f.Name @(f.Brand is null ? "" : $"({f.Brand})")</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input type="number" step="1" min="0" style="width: 80px;" @bind="i.Grams" /></td>
+                        <td>@(food is null ? "—" : (food.CaloriesPer100g * factor).ToString("0.#"))</td>
+                        <td>@(food is null ? "—" : (food.ProteinPer100g * factor).ToString("0.#"))</td>
+                        <td>@(food is null ? "—" : (food.CarbsPer100g * factor).ToString("0.#"))</td>
+                        <td>@(food is null ? "—" : (food.FatPer100g * factor).ToString("0.#"))</td>
+                        <td><button class="btn btn-sm btn-danger" @onclick="() => _editing!.Ingredients.Remove(i)">×</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <button class="btn btn-ghost" @onclick="AddIngredient">+ Ingredient</button>
+
+        <div style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="btn" @onclick="Save" disabled="@_busy">Save</button>
+            <button class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<RecipeDto> _recipes = new();
+    private List<FoodDto> _foods = new();
+    private RecipeEdit? _editing;
+    private int? _editingId;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _foods = await FoodSvc.ListAsync(null);
+        await Reload();
+    }
+
+    private async Task Reload() => _recipes = await RecipeSvc.ListAsync();
+
+    private void StartNew()
+    {
+        _editingId = null;
+        _editing = new RecipeEdit { Servings = 1, Ingredients = new() };
+    }
+
+    private void Edit(RecipeDto r)
+    {
+        _editingId = r.Id;
+        _editing = new RecipeEdit
+        {
+            Name = r.Name,
+            Description = r.Description,
+            Servings = r.Servings,
+            Ingredients = r.Ingredients.Select(i => new IngEdit { FoodId = i.FoodId, Grams = i.Grams }).ToList()
+        };
+    }
+
+    private void AddIngredient() => _editing!.Ingredients.Add(new IngEdit());
+
+    private async Task Save()
+    {
+        if (_editing is null || string.IsNullOrWhiteSpace(_editing.Name)) return;
+        _busy = true;
+        var dto = new UpsertRecipeDto(
+            _editing.Name.Trim(),
+            _editing.Description,
+            Math.Max(1, _editing.Servings),
+            _editing.Ingredients.Where(i => i.FoodId > 0 && i.Grams > 0)
+                .Select(i => new UpsertRecipeIngredientDto(i.FoodId, i.Grams)).ToList()
+        );
+        if (_editingId is null) await RecipeSvc.CreateAsync(dto);
+        else await RecipeSvc.UpdateAsync(_editingId.Value, dto);
+        Cancel();
+        await Reload();
+        _busy = false;
+    }
+
+    private void Cancel() { _editing = null; _editingId = null; }
+
+    private async Task Delete(int id) { await RecipeSvc.DeleteAsync(id); await Reload(); }
+
+    private class RecipeEdit
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public int Servings { get; set; } = 1;
+        public List<IngEdit> Ingredients { get; set; } = new();
+    }
+    private class IngEdit
+    {
+        public int FoodId { get; set; }
+        public decimal Grams { get; set; } = 100m;
+    }
+}

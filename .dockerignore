@@ -1,0 +1,23 @@
+## Build artefacts
+**/bin/
+**/obj/
+
+## User-secrets and local config (never bake credentials into the image)
+**/appsettings.Development.json
+**/secrets.json
+
+## IDE / OS
+.vs/
+.idea/
+**/.DS_Store
+Thumbs.db
+
+## Git
+.git/
+.gitignore
+
+## Docker itself
+Dockerfile
+.dockerignore
+docker-compose*.yml
+

@@ -1,0 +1,173 @@
+@page "/diary"
+@inject IMealEntryService MealSvc
+@inject IFoodService FoodSvc
+@inject IRecipeService RecipeSvc
+
+<h1>Food diary</h1>
+
+<div class="card">
+    <div class="card-row">
+        <div>
+            <label style="color: var(--text-dim); margin-right: 8px;">Date</label>
+            <input type="date" @bind="_date" @bind:after="Reload" />
+        </div>
+        <div>
+            <button class="btn btn-sm btn-ghost" @onclick="Prev">◀ Prev</button>
+            <button class="btn btn-sm btn-ghost" @onclick="Today">Today</button>
+            <button class="btn btn-sm btn-ghost" @onclick="Next">Next ▶</button>
+        </div>
+    </div>
+
+    @if (_day is not null)
+    {
+        <div class="grid">
+            <div class="metric"><div class="label">Calories</div><div class="value">@_day.TotalCalories</div></div>
+            <div class="metric"><div class="label">Protein (g)</div><div class="value">@_day.TotalProtein</div></div>
+            <div class="metric"><div class="label">Carbs (g)</div><div class="value">@_day.TotalCarbs</div></div>
+            <div class="metric"><div class="label">Fat (g)</div><div class="value">@_day.TotalFat</div></div>
+        </div>
+    }
+</div>
+
+<div class="card">
+    <h3>Add entry</h3>
+    <div class="form-row">
+        <label>Meal</label>
+        <select @bind="_newMeal">
+            @foreach (var v in Enum.GetValues<MealType>())
+            {
+                <option value="@v">@v</option>
+            }
+        </select>
+        <label style="margin-left: 20px;">Type</label>
+        <select @bind="_newType" @bind:after="OnTypeChange">
+            <option value="food">Food</option>
+            <option value="recipe">Recipe</option>
+        </select>
+    </div>
+    @if (_newType == "food")
+    {
+        <div class="form-row">
+            <label>Food</label>
+            <select @bind="_newFoodId" style="min-width: 280px;">
+                <option value="0">-- pick food --</option>
+                @foreach (var f in _foods)
+                {
+                    <option value="@f.Id">@f.Name @(f.Brand is null ? "" : $"({f.Brand})")</option>
+                }
+            </select>
+            <label style="margin-left: 20px;">Grams</label>
+            <input type="number" step="1" min="0" @bind="_newGrams" />
+        </div>
+    }
+    else
+    {
+        <div class="form-row">
+            <label>Recipe</label>
+            <select @bind="_newRecipeId" style="min-width: 280px;">
+                <option value="0">-- pick recipe --</option>
+                @foreach (var r in _recipes)
+                {
+                    <option value="@r.Id">@r.Name (@r.Servings servings)</option>
+                }
+            </select>
+            <label style="margin-left: 20px;">Servings</label>
+            <input type="number" step="0.25" min="0" @bind="_newServings" />
+        </div>
+    }
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_newNotes" style="flex: 1; max-width: 500px;" />
+    </div>
+    <button class="btn" @onclick="Add" disabled="@_busy">Add entry</button>
+    @if (_error is not null)
+    {
+        <p style="color: var(--err); margin-top: 10px;">@_error</p>
+    }
+</div>
+
+<div class="card">
+    <h3>Entries</h3>
+    @if (_day is null || _day.Entries.Count == 0)
+    {
+        <p style="color: var(--text-dim);">Nothing logged yet.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead><tr><th>Meal</th><th>Item</th><th>Amount</th><th>kcal</th><th>P</th><th>C</th><th>F</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var e in _day.Entries)
+                {
+                    <tr>
+                        <td><span class="badge">@e.MealType</span></td>
+                        <td>@(e.FoodName ?? e.RecipeName)</td>
+                        <td>@(e.Grams.HasValue ? $"{e.Grams} g" : $"{e.Servings} serv")</td>
+                        <td>@e.Calories</td>
+                        <td>@e.Protein</td>
+                        <td>@e.Carbs</td>
+                        <td>@e.Fat</td>
+                        <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(e.Id)">×</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private DateTime _date = DateTime.Today;
+    private DailyNutritionDto? _day;
+    private List<FoodDto> _foods = new();
+    private List<RecipeDto> _recipes = new();
+
+    private MealType _newMeal = MealType.Lunch;
+    private string _newType = "food";
+    private int _newFoodId;
+    private int _newRecipeId;
+    private decimal? _newGrams = 100;
+    private decimal? _newServings = 1;
+    private string? _newNotes;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _foods = await FoodSvc.ListAsync(null);
+        _recipes = await RecipeSvc.ListAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _day = await MealSvc.GetDayAsync(DateOnly.FromDateTime(_date));
+    }
+
+    private void OnTypeChange() { _newFoodId = 0; _newRecipeId = 0; }
+
+    private async Task Add()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            int? foodId = _newType == "food" && _newFoodId > 0 ? _newFoodId : null;
+            int? recipeId = _newType == "recipe" && _newRecipeId > 0 ? _newRecipeId : null;
+            decimal? grams = _newType == "food" ? _newGrams : null;
+            decimal? servings = _newType == "recipe" ? _newServings : null;
+
+            await MealSvc.CreateAsync(new UpsertMealEntryDto(
+                DateOnly.FromDateTime(_date), _newMeal, foodId, recipeId, grams, servings, _newNotes));
+            _newNotes = null;
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        _busy = false;
+    }
+
+    private async Task Delete(int id) { await MealSvc.DeleteAsync(id); await Reload(); }
+
+    private async Task Prev() { _date = _date.AddDays(-1); await Reload(); }
+    private async Task Next() { _date = _date.AddDays(1); await Reload(); }
+    private async Task Today() { _date = DateTime.Today; await Reload(); }
+}

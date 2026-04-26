@@ -1,0 +1,38 @@
+﻿name: CI on self-hosted (FitTrack)
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore & test
+        shell: cmd
+        run: |
+          dotnet restore
+          dotnet test
+
+      - name: Build Docker image
+        shell: cmd
+        run: |
+          set IMAGE_TAG=%GITHUB_SHA:~0,7%
+          echo Building image fittrack-web:%IMAGE_TAG%
+          docker build -t fittrack-web:%IMAGE_TAG% -t fittrack-web:ci-latest -f src/FitTrack.Web/Dockerfile .
+
+      - name: Deploy manifests
+        shell: cmd
+        run: |
+          kubectl apply -f k8s\deployment.yaml
+          kubectl apply -f k8s\service.yaml
+
+      - name: Update deployment image
+        shell: cmd
+        run: |
+          set IMAGE_TAG=%GITHUB_SHA:~0,7%
+          echo Updating fittrack-web deployment to image fittrack-web:%IMAGE_TAG%
+          kubectl set image deployment/fittrack-web fittrack-web=fittrack-web:%IMAGE_TAG%

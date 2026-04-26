@@ -1,0 +1,64 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fittrack-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fittrack-web
+  template:
+    metadata:
+      labels:
+        app: fittrack-web
+    spec:
+      containers:
+        - name: fittrack-web
+          image: fittrack-web:ci-latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ConnectionStrings__Postgres
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-secrets
+                  key: Postgres
+            - name: AzureAd__TenantId
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-secrets
+                  key: AzureAd__TenantId
+            - name: AzureAd__ClientId
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-secrets
+                  key: AzureAd__ClientId
+            - name: AzureAd__ClientSecret
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-secrets
+                  key: AzureAd__ClientSecret
+            - name: AzureAd__Domain
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-secrets
+                  key: AzureAd__Domain
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"

@@ -1,0 +1,56 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">
+            <h2>FitTrack</h2>
+            <small>Workouts &amp; health</small>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="user-chip">
+                    <div class="user-name">@context.User.Identity?.Name</div>
+                    @if (context.User.HasClaim(c => c.Type == "roles" && c.Value == "admin"))
+                    {
+                        <span class="admin-badge">admin</span>
+                    }
+                    <a class="sign-out" href="MicrosoftIdentity/Account/SignOut">Sign out</a>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="user-chip">
+                    <a class="sign-in" href="MicrosoftIdentity/Account/SignIn">Sign in</a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+
+        <nav>
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">Today</NavLink>
+            <div class="nav-group">Workouts</div>
+            <NavLink class="nav-item" href="/exercises">Exercises</NavLink>
+            <NavLink class="nav-item" href="/mesocycles">Mesocycles</NavLink>
+            <NavLink class="nav-item" href="/instances">Instances</NavLink>
+            <NavLink class="nav-item" href="/progress">Progression</NavLink>
+
+            <div class="nav-group">Health</div>
+            <NavLink class="nav-item" href="/cardio">Cardio</NavLink>
+            <NavLink class="nav-item" href="/body">Bodyweight</NavLink>
+            <NavLink class="nav-item" href="/measurements">Measurements</NavLink>
+            <NavLink class="nav-item" href="/blood-pressure">Blood pressure</NavLink>
+            <NavLink class="nav-item" href="/colds">Cold tracker</NavLink>
+
+            <div class="nav-group">Nutrition</div>
+            <NavLink class="nav-item" href="/foods">Foods</NavLink>
+            <NavLink class="nav-item" href="/recipes">Recipes</NavLink>
+            <NavLink class="nav-item" href="/diary">Food diary</NavLink>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/swagger" target="_blank">API (Swagger)</a>
+        </div>
+    </aside>
+    <main class="content">
+        @Body
+    </main>
+</div>

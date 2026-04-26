@@ -1,0 +1,121 @@
+@page "/body"
+@inject IBodyMeasurementService Svc
+
+<h1>Bodyweight</h1>
+
+<div class="card">
+    <h3>Log measurement</h3>
+    <div class="form-row">
+        <label>Date</label>
+        <input type="date" @bind="_date" />
+    </div>
+    <div class="form-row">
+        <label>Weight (kg)</label>
+        <input type="number" step="0.1" min="0" @bind="_weight" />
+    </div>
+    <div class="form-row">
+        <label>Body fat %</label>
+        <input type="number" step="0.1" min="0" @bind="_bf" />
+        <label style="margin-left: 20px;">Muscle %</label>
+        <input type="number" step="0.1" min="0" @bind="_mp" />
+        <label style="margin-left: 20px;">Muscle (kg)</label>
+        <input type="number" step="0.1" min="0" @bind="_mk" />
+    </div>
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_notes" style="flex: 1; max-width: 500px;" />
+    </div>
+    <button class="btn" @onclick="Add" disabled="@(_weight is null or <= 0 || _busy)">Save</button>
+</div>
+
+@if (_items.Count > 0)
+{
+    <div class="card">
+        <h3>Trend</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+            <div class="metric"><div class="label">Latest</div><div class="value">@_items.First().WeightKg kg</div></div>
+            <div class="metric"><div class="label">7-day avg</div><div class="value">@Avg(7).ToString("0.0") kg</div></div>
+            <div class="metric"><div class="label">30-day avg</div><div class="value">@Avg(30).ToString("0.0") kg</div></div>
+            <div class="metric"><div class="label">Change vs oldest</div><div class="value">@((_items.First().WeightKg - _items.Last().WeightKg).ToString("+0.0;-0.0;0")) kg</div></div>
+        </div>
+        <svg viewBox="0 0 600 180" width="100%" height="180" style="background: var(--panel-2); border-radius: 6px;">
+            @{
+                var items = _items.OrderBy(i => i.MeasuredOn).ToList();
+                if (items.Count >= 2)
+                {
+                    var min = items.Min(i => (double)i.WeightKg);
+                    var max = items.Max(i => (double)i.WeightKg);
+                    if (Math.Abs(max - min) < 0.001) { min -= 1; max += 1; }
+                    var w = 560.0; var h = 140.0; var x0 = 30.0; var y0 = 20.0;
+                    string points = string.Join(" ", items.Select((p, i) =>
+                    {
+                        double x = x0 + (i / (double)(items.Count - 1)) * w;
+                        double y = y0 + h - ((double)p.WeightKg - min) / (max - min) * h;
+                        return $"{x:0.#},{y:0.#}";
+                    }));
+                    <polyline points="@points" fill="none" stroke="#4f8cff" stroke-width="2" />
+                }
+            }
+        </svg>
+    </div>
+}
+
+<div class="card">
+    <h3>History</h3>
+    <table class="table">
+        <thead><tr><th>Date</th><th>Weight</th><th>Body fat %</th><th>Muscle %</th><th>Muscle kg</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var b in _items)
+            {
+                <tr>
+                    <td>@b.MeasuredOn.ToString("yyyy-MM-dd")</td>
+                    <td>@b.WeightKg</td>
+                    <td>@b.BodyFatPercent</td>
+                    <td>@b.MusclePercent</td>
+                    <td>@b.MuscleKg</td>
+                    <td>@b.Notes</td>
+                    <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(b.Id)">Delete</button></td>
+                </tr>
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="7" style="color: var(--text-dim);">No measurements yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<BodyMeasurementDto> _items = new();
+    private DateTime _date = DateTime.Today;
+    private decimal? _weight;
+    private decimal? _bf;
+    private decimal? _mp;
+    private decimal? _mk;
+    private string? _notes;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => _items = await Svc.ListAsync();
+
+    private async Task Add()
+    {
+        if (_weight is null || _weight <= 0) return;
+        _busy = true;
+        await Svc.CreateAsync(new UpsertBodyMeasurementDto(
+            DateOnly.FromDateTime(_date), _weight.Value, _bf, _mp, _mk, _notes));
+        _weight = null; _bf = null; _mp = null; _mk = null; _notes = null;
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+
+    private decimal Avg(int days)
+    {
+        var cutoff = DateOnly.FromDateTime(DateTime.Today.AddDays(-days));
+        var recent = _items.Where(i => i.MeasuredOn >= cutoff).ToList();
+        if (recent.Count == 0) return _items.FirstOrDefault()?.WeightKg ?? 0;
+        return recent.Average(i => i.WeightKg);
+    }
+}

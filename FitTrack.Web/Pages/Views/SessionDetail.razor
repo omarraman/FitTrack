@@ -1,0 +1,106 @@
+﻿@page "/session/{SessionId:int}"
+@inject IWorkoutSessionService SessionSvc
+@inject NavigationManager Nav
+
+<h1>Session detail</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (_session is null)
+{
+    <div class="card"><p>Session not found.</p></div>
+}
+else
+{
+    <div class="card">
+        <div class="card-row">
+            <div>
+                <h2>@_session.WorkoutName <span class="badge">Week @_session.WeekNumber</span></h2>
+                <small style="color: var(--text-dim);">@_session.ScheduledDate.ToString("dddd d MMMM yyyy")</small>
+            </div>
+            <div>
+                @if (_session.CompletedAt is not null)
+                {
+                    <span class="badge ok">Completed @_session.CompletedAt.Value.ToLocalTime().ToString("HH:mm")</span>
+                }
+                else
+                {
+                    <span class="badge warn">Pending</span>
+                }
+            </div>
+        </div>
+
+        @foreach (var group in _session.Logs
+            .GroupBy(l => new { l.ExerciseId, l.ExerciseName })
+            .OrderBy(g => g.Min(l => l.Id)))
+        {
+            <div class="card" style="background: var(--panel-2); margin-top: 12px;">
+                <h3 style="color: var(--text);">@group.Key.ExerciseName</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:60px;">Set</th>
+                            <th>Target</th>
+                            <th>Actual reps</th>
+                            <th>Actual kg</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in group.OrderBy(l => l.SetNumber))
+                        {
+                            <tr>
+                                <td>@log.SetNumber</td>
+                                <td><span class="badge">@log.TargetReps × @log.TargetWeightKg kg</span></td>
+                                <td>
+                                    @if (log.ActualReps.HasValue)
+                                    {
+                                        var diff = log.ActualReps.Value - log.TargetReps;
+                                        <span class="badge @(diff >= 0 ? "ok" : "err")">
+                                            @log.ActualReps @(diff > 0 ? $"(+{diff})" : diff < 0 ? $"({diff})" : "")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--text-dim);">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (log.ActualWeightKg.HasValue)
+                                    {
+                                        <span>@log.ActualWeightKg kg</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--text-dim);">—</span>
+                                    }
+                                </td>
+                                <td style="color:var(--text-dim);">@log.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div style="margin-top: 16px;">
+            <button class="btn btn-ghost" @onclick='() => Nav.NavigateTo("/instances")'>← Back</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int SessionId { get; set; }
+
+    private WorkoutSessionDto? _session;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _session = await SessionSvc.GetAsync(SessionId);
+        _loading = false;
+    }
+}
+

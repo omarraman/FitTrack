@@ -1,0 +1,93 @@
+@page "/blood-pressure"
+@inject IBloodPressureService Svc
+
+<h1>Blood pressure</h1>
+
+<div class="card">
+    <h3>Log reading</h3>
+    <div class="form-row">
+        <label>Measured at</label>
+        <input type="datetime-local" @bind="_when" />
+    </div>
+    <div class="form-row">
+        <label>Systolic</label>
+        <input type="number" min="50" max="260" @bind="_sys" />
+        <label style="margin-left: 20px;">Diastolic</label>
+        <input type="number" min="30" max="160" @bind="_dia" />
+        <label style="margin-left: 20px;">Pulse</label>
+        <input type="number" min="30" max="240" @bind="_pulse" />
+    </div>
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_notes" style="flex: 1; max-width: 500px;" />
+    </div>
+    <button class="btn" @onclick="Add" disabled="@(_sys is null || _dia is null || _busy)">Save</button>
+</div>
+
+<div class="card">
+    <h3>History</h3>
+    <table class="table">
+        <thead><tr><th>When</th><th>Systolic</th><th>Diastolic</th><th>Pulse</th><th>Category</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var r in _items)
+            {
+                <tr>
+                    <td>@r.MeasuredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>@r.Systolic</td>
+                    <td>@r.Diastolic</td>
+                    <td>@r.Pulse</td>
+                    <td>@CategoryBadge(r.Systolic, r.Diastolic)</td>
+                    <td>@r.Notes</td>
+                    <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(r.Id)">Delete</button></td>
+                </tr>
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="7" style="color: var(--text-dim);">No readings yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<BloodPressureDto> _items = new();
+    private DateTime _when = DateTime.Now;
+    private int? _sys;
+    private int? _dia;
+    private int? _pulse;
+    private string? _notes;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+    private async Task Reload() => _items = await Svc.ListAsync();
+
+    private async Task Add()
+    {
+        if (_sys is null || _dia is null) return;
+        _busy = true;
+        await Svc.CreateAsync(new UpsertBloodPressureDto(
+            new DateTimeOffset(_when, TimeZoneInfo.Local.GetUtcOffset(_when)),
+            _sys.Value, _dia.Value, _pulse, _notes));
+        _sys = null; _dia = null; _pulse = null; _notes = null;
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+
+    // American Heart Association categories.
+    private static RenderFragment CategoryBadge(int sys, int dia) => b =>
+    {
+        string label;
+        string cls;
+        if (sys >= 180 || dia >= 120) { label = "Hypertensive crisis"; cls = "err"; }
+        else if (sys >= 140 || dia >= 90) { label = "Stage 2"; cls = "err"; }
+        else if (sys >= 130 || dia >= 80) { label = "Stage 1"; cls = "warn"; }
+        else if (sys >= 120) { label = "Elevated"; cls = "warn"; }
+        else { label = "Normal"; cls = "ok"; }
+        b.OpenElement(0, "span");
+        b.AddAttribute(1, "class", $"badge {cls}");
+        b.AddContent(2, label);
+        b.CloseElement();
+    };
+}

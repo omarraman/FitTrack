@@ -1,0 +1,117 @@
+﻿@using System.Globalization
+@using System.Text
+
+@((MarkupString)_svg)
+
+@code {
+    public record WeekPoint(int Week, decimal Weight);
+
+    [Parameter, EditorRequired] public string ExerciseName { get; set; } = "";
+    [Parameter, EditorRequired] public List<WeekPoint> Series1 { get; set; } = new();
+    [Parameter, EditorRequired] public string Series1Label { get; set; } = "";
+    [Parameter] public List<WeekPoint>? Series2 { get; set; }
+    [Parameter] public string? Series2Label { get; set; }
+
+    private string _svg = "";
+
+    protected override void OnParametersSet() => _svg = BuildSvg();
+
+    private string BuildSvg()
+    {
+        const int W = 600, H = 210;
+        const int PL = 58, PR = 20, PT = 20, PB = 38;
+        int plotW = W - PL - PR;
+        int plotH = H - PT - PB;
+
+        var allWeeks = Series1.Select(p => p.Week)
+            .Concat(Series2 != null ? Series2.Select(p => p.Week) : Array.Empty<int>())
+            .Distinct().OrderBy(x => x).ToList();
+
+        if (!allWeeks.Any()) return "";
+
+        int weekMin = allWeeks.Min(), weekMax = allWeeks.Max();
+
+        var allWeights = Series1.Select(p => p.Weight)
+            .Concat(Series2 != null ? Series2.Select(p => p.Weight) : Array.Empty<decimal>())
+            .ToList();
+
+        decimal wMin = allWeights.Any() ? allWeights.Min() : 0;
+        decimal wMax = allWeights.Any() ? allWeights.Max() : 100;
+        decimal wRange = wMax - wMin;
+        if (wRange < 1) wRange = 10;
+        decimal pad = wRange * 0.18m;
+        decimal yLo = Math.Max(0, wMin - pad);
+        decimal yHi = wMax + pad;
+
+        double Xf(int week) => weekMax == weekMin
+            ? PL + plotW / 2.0
+            : PL + (double)(week - weekMin) / (weekMax - weekMin) * plotW;
+
+        double Yf(decimal w) => PT + plotH - (double)((w - yLo) / (yHi - yLo)) * plotH;
+
+        string Sv(double v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+        string Sd(decimal v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+        string Polyline(List<WeekPoint> pts) =>
+            string.Join(" ", pts.Select(p => $"{Sv(Xf(p.Week))},{Sv(Yf(p.Weight))}"));
+
+        var yTicks = Enumerable.Range(0, 5).Select(i => yLo + (yHi - yLo) * i / 4m).ToList();
+
+        var sb = new StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" style=\"width:100%;max-height:210px;display:block;\">");
+
+        // Grid + Y labels
+        foreach (var tick in yTicks)
+        {
+            sb.Append($"<line x1=\"{PL}\" y1=\"{Sv(Yf(tick))}\" x2=\"{W - PR}\" y2=\"{Sv(Yf(tick))}\" stroke=\"#444\" stroke-width=\"1\" stroke-dasharray=\"4,3\"/>");
+            sb.Append($"<text x=\"{PL - 5}\" y=\"{Sv(Yf(tick))}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-size=\"11\" fill=\"#888\">{Sd(tick)}</text>");
+        }
+
+        // X grid + week labels
+        foreach (var wk in allWeeks)
+        {
+            sb.Append($"<line x1=\"{Sv(Xf(wk))}\" y1=\"{PT}\" x2=\"{Sv(Xf(wk))}\" y2=\"{PT + plotH}\" stroke=\"#444\" stroke-width=\"1\" stroke-dasharray=\"4,3\"/>");
+            sb.Append($"<text x=\"{Sv(Xf(wk))}\" y=\"{PT + plotH + 14}\" text-anchor=\"middle\" font-size=\"11\" fill=\"#888\">Wk {wk}</text>");
+        }
+
+        // Axes
+        sb.Append($"<line x1=\"{PL}\" y1=\"{PT}\" x2=\"{PL}\" y2=\"{PT + plotH}\" stroke=\"#666\" stroke-width=\"1.5\"/>");
+        sb.Append($"<line x1=\"{PL}\" y1=\"{PT + plotH}\" x2=\"{W - PR}\" y2=\"{PT + plotH}\" stroke=\"#666\" stroke-width=\"1.5\"/>");
+
+        // Series 2 (comparison, dashed green)
+        if (Series2 != null && Series2.Any())
+        {
+            if (Series2.Count > 1)
+                sb.Append($"<polyline points=\"{Polyline(Series2)}\" fill=\"none\" stroke=\"#4caf50\" stroke-width=\"2\" stroke-dasharray=\"7,4\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>");
+
+            foreach (var pt in Series2)
+            {
+                sb.Append($"<circle cx=\"{Sv(Xf(pt.Week))}\" cy=\"{Sv(Yf(pt.Weight))}\" r=\"4\" fill=\"#4caf50\" stroke=\"#1a1a1a\" stroke-width=\"2\"/>");
+                sb.Append($"<text x=\"{Sv(Xf(pt.Week))}\" y=\"{Sv(Yf(pt.Weight) + 17)}\" text-anchor=\"middle\" font-size=\"10\" fill=\"#4caf50\">{Sd(pt.Weight)}</text>");
+            }
+        }
+
+        // Series 1 (primary, blue)
+        if (Series1.Count > 1)
+            sb.Append($"<polyline points=\"{Polyline(Series1)}\" fill=\"none\" stroke=\"#4f8ef7\" stroke-width=\"2.5\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>");
+
+        foreach (var pt in Series1)
+        {
+            sb.Append($"<circle cx=\"{Sv(Xf(pt.Week))}\" cy=\"{Sv(Yf(pt.Weight))}\" r=\"5\" fill=\"#4f8ef7\" stroke=\"#1a1a1a\" stroke-width=\"2\"/>");
+            sb.Append($"<text x=\"{Sv(Xf(pt.Week))}\" y=\"{Sv(Yf(pt.Weight) - 9)}\" text-anchor=\"middle\" font-size=\"11\" fill=\"#4f8ef7\">{Sd(pt.Weight)}</text>");
+        }
+
+        // Legend
+        sb.Append($"<circle cx=\"{PL + 4}\" cy=\"{H - 8}\" r=\"4\" fill=\"#4f8ef7\"/>");
+        sb.Append($"<text x=\"{PL + 12}\" y=\"{H - 5}\" font-size=\"11\" fill=\"#ccc\">{System.Web.HttpUtility.HtmlEncode(Series1Label)}</text>");
+
+        if (Series2 != null && Series2Label != null)
+        {
+            sb.Append($"<circle cx=\"{PL + 160}\" cy=\"{H - 8}\" r=\"4\" fill=\"#4caf50\"/>");
+            sb.Append($"<text x=\"{PL + 168}\" y=\"{H - 5}\" font-size=\"11\" fill=\"#ccc\">{System.Web.HttpUtility.HtmlEncode(Series2Label)}</text>");
+        }
+
+        sb.Append("</svg>");
+        return sb.ToString();
+    }
+}

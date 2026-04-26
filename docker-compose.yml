@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fittrack-postgres
+    environment:
+      POSTGRES_USER: fittrack
+      POSTGRES_PASSWORD: fittrack
+      POSTGRES_DB: fittrack
+    ports:
+      - "5432:5432"
+    volumes:
+      - fittrack-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fittrack -d fittrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fittrack-web
+    ports:
+      - "8080:8080"
+    environment:
+      # Override the connection string to reach the postgres container by service name
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=fittrack;Username=fittrack;Password=fittrack"
+      # AzureAd settings — override at runtime or via a .env file; never hard-code secrets here
+      AzureAd__TenantId: "${AZURE_TENANT_ID}"
+      AzureAd__ClientId: "${AZURE_CLIENT_ID}"
+      AzureAd__ClientSecret: "${AZURE_CLIENT_SECRET}"
+      AzureAd__Domain: "${AZURE_DOMAIN}"
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  fittrack-pgdata:

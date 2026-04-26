@@ -1,0 +1,156 @@
+@page "/exercises"
+@inject IExerciseService ExerciseSvc
+
+<h1>Exercises</h1>
+
+<div class="card">
+    <h3>Add new</h3>
+    <div class="form-row">
+        <label>Name</label>
+        <input @bind="_newName" placeholder="e.g. Bench Press" />
+    </div>
+    <div class="form-row">
+        <label>Muscle group</label>
+        <select @bind="_newGroup">
+            @foreach (var v in Enum.GetValues<MuscleGroup>())
+            {
+                <option value="@v">@v</option>
+            }
+        </select>
+    </div>
+    <div class="form-row">
+        <label>Weekly increment (kg)</label>
+        <select @bind="_newIncrement">
+            @foreach (var v in _increments)
+            {
+                <option value="@v">@v.ToString("0.00")</option>
+            }
+        </select>
+    </div>
+    <div class="form-row">
+        <label>Description</label>
+        <input @bind="_newDesc" style="flex:1; max-width: 500px;" />
+    </div>
+    <button class="btn" @onclick="Add" disabled="@(string.IsNullOrWhiteSpace(_newName) || _busy)">Add exercise</button>
+</div>
+
+<div class="card">
+    <h3>All exercises</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Muscle group</th>
+                <th>Weekly increment</th>
+                <th>Description</th>
+                <th style="width:140px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var e in _items)
+            {
+                @if (_editingId == e.Id)
+                {
+                    <tr>
+                        <td><input @bind="_editName" style="width:100%;" /></td>
+                        <td>
+                            <select @bind="_editGroup">
+                                @foreach (var v in Enum.GetValues<MuscleGroup>())
+                                {
+                                    <option value="@v">@v</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select @bind="_editIncrement">
+                                @foreach (var v in _increments)
+                                {
+                                    <option value="@v">@v.ToString("0.00")</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input @bind="_editDesc" style="width:100%;" /></td>
+                        <td>
+                            <button class="btn btn-sm" @onclick="() => SaveEdit(e.Id)" disabled="@_busy">Save</button>
+                            <button class="btn btn-sm btn-ghost" @onclick="CancelEdit">Cancel</button>
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <tr>
+                        <td>@e.Name</td>
+                        <td><span class="badge">@e.PrimaryMuscleGroup</span></td>
+                        <td>@e.WeeklyIncrementKg.ToString("0.00") kg</td>
+                        <td>@e.Description</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" @onclick="() => StartEdit(e)">Edit</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => Delete(e.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="5" style="color: var(--text-dim);">No exercises yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private static readonly decimal[] _increments = { 0.25m, 0.50m, 0.75m, 1.00m, 1.25m, 1.50m };
+
+    private List<ExerciseDto> _items = new();
+    private string _newName = "";
+    private string? _newDesc;
+    private MuscleGroup _newGroup = MuscleGroup.Other;
+    private decimal _newIncrement = 0.25m;
+    private bool _busy;
+
+    // inline edit state
+    private int? _editingId;
+    private string _editName = "";
+    private string? _editDesc;
+    private MuscleGroup _editGroup;
+    private decimal _editIncrement;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() => _items = await ExerciseSvc.ListAsync();
+
+    private async Task Add()
+    {
+        _busy = true;
+        await ExerciseSvc.CreateAsync(new CreateExerciseDto(_newName.Trim(), _newDesc, _newGroup, _newIncrement));
+        _newName = ""; _newDesc = null; _newGroup = MuscleGroup.Other; _newIncrement = 0.25m;
+        await Reload();
+        _busy = false;
+    }
+
+    private void StartEdit(ExerciseDto e)
+    {
+        _editingId = e.Id;
+        _editName = e.Name;
+        _editDesc = e.Description;
+        _editGroup = e.PrimaryMuscleGroup;
+        _editIncrement = e.WeeklyIncrementKg;
+    }
+
+    private void CancelEdit() => _editingId = null;
+
+    private async Task SaveEdit(int id)
+    {
+        _busy = true;
+        await ExerciseSvc.UpdateAsync(id, new CreateExerciseDto(_editName.Trim(), _editDesc, _editGroup, _editIncrement));
+        _editingId = null;
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task Delete(int id)
+    {
+        await ExerciseSvc.DeleteAsync(id);
+        await Reload();
+    }
+}

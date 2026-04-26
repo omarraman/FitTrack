@@ -1,0 +1,173 @@
+@page "/instances"
+@inject IMesocycleInstanceService InstanceSvc
+@inject IMesocycleService MesoSvc
+@inject IWorkoutSessionService SessionSvc
+
+<h1>Mesocycle instances</h1>
+
+<div class="card">
+    <h3>Start a new instance</h3>
+    <div class="form-row">
+        <label>Mesocycle</label>
+        <select @bind="_selectedMesoId">
+            <option value="0">-- select --</option>
+            @foreach (var m in _mesocycles)
+            {
+                <option value="@m.Id">@m.Name (@m.DurationWeeks weeks, @m.Workouts.Count days)</option>
+            }
+        </select>
+    </div>
+    <div class="form-row">
+        <label>Start date</label>
+        <input type="date" @bind="_startDate" />
+    </div>
+    <button class="btn" @onclick="Start" disabled="@(_selectedMesoId == 0 || _busy)">Start instance</button>
+
+    @if (_error is not null)
+    {
+        <p style="color: var(--err); margin-top: 10px;">@_error</p>
+    }
+    @if (_justStartedMultiplier.HasValue)
+    {
+        <p style="color: var(--ok); margin-top: 10px;">
+            Instance started. Weight multiplier = @_justStartedMultiplier.Value.ToString("0.0000")
+            (@((_justStartedMultiplier.Value - 1) * 100).ToString("0.#")% over template).
+        </p>
+    }
+</div>
+
+<div class="card">
+    <h3>All instances</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Mesocycle</th><th>Start</th><th>End</th><th>Status</th><th>Multiplier</th><th style="width:260px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var i in _instances)
+            {
+                <tr>
+                    <td>@i.MesocycleName</td>
+                    <td>@i.StartDate.ToString("yyyy-MM-dd")</td>
+                    <td>@(i.EndDate?.ToString("yyyy-MM-dd") ?? "—")</td>
+                    <td>
+                        @switch (i.Status)
+                        {
+                            case MesocycleInstanceStatus.Active: <span class="badge warn">Active</span> break;
+                            case MesocycleInstanceStatus.Completed: <span class="badge ok">Completed</span> break;
+                            case MesocycleInstanceStatus.Abandoned: <span class="badge err">Abandoned</span> break;
+                        }
+                    </td>
+                    <td>@i.WeightMultiplier.ToString("0.0000")</td>
+                    <td>
+                        <button class="btn btn-sm btn-ghost" @onclick="() => ToggleSessions(i.Id)">
+                            @(_expandedId == i.Id ? "Hide" : "Sessions")
+                        </button>
+                        @if (i.Status == MesocycleInstanceStatus.Active)
+                        {
+                            <button class="btn btn-sm btn-ok" @onclick="() => Complete(i.Id)">Complete</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => Abandon(i.Id)">Abandon</button>
+                        }
+                    </td>
+                </tr>
+                @if (_expandedId == i.Id)
+                {
+                    <tr>
+                        <td colspan="6" style="background: var(--panel-2);">
+                            @if (_sessions is null)
+                            {
+                                <p>Loading…</p>
+                            }
+                            else
+                            {
+                                <table class="table">
+                                    <thead>
+                                        <tr><th>Week</th><th>Date</th><th>Workout</th><th>Sets</th><th>Completed</th><th></th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var s in _sessions)
+                                        {
+                                            <tr>
+                                                <td>@s.WeekNumber</td>
+                                                <td>@s.ScheduledDate.ToString("yyyy-MM-dd")</td>
+                                                <td>@s.WorkoutName</td>
+                                                <td>@s.Logs.Count</td>
+                                                <td>
+                                                    @if (s.CompletedAt is not null)
+                                                    {
+                                                        <span class="badge ok">Yes</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge">pending</span>
+                                                    }
+                                                </td>
+                                                <td><a class="btn btn-sm btn-ghost" href="/session/@s.Id">View</a></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </td>
+                    </tr>
+                }
+            }
+            @if (_instances.Count == 0)
+            {
+                <tr><td colspan="6" style="color: var(--text-dim);">No instances yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<MesocycleInstanceDto> _instances = new();
+    private List<MesocycleDto> _mesocycles = new();
+    private int _selectedMesoId;
+    private DateTime _startDate = DateTime.Today;
+    private bool _busy;
+    private string? _error;
+    private decimal? _justStartedMultiplier;
+
+    private int? _expandedId;
+    private List<WorkoutSessionDto>? _sessions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _mesocycles = await MesoSvc.ListAsync();
+        await Reload();
+    }
+
+    private async Task Reload() => _instances = await InstanceSvc.ListAsync();
+
+    private async Task Start()
+    {
+        _error = null;
+        _justStartedMultiplier = null;
+        _busy = true;
+        try
+        {
+            var result = await InstanceSvc.StartAsync(_selectedMesoId, DateOnly.FromDateTime(_startDate));
+            _justStartedMultiplier = result.WeightMultiplier;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        _busy = false;
+    }
+
+    private async Task Complete(int id) { await InstanceSvc.CompleteAsync(id); await Reload(); }
+    private async Task Abandon(int id) { await InstanceSvc.AbandonAsync(id); await Reload(); }
+
+    private async Task ToggleSessions(int id)
+    {
+        if (_expandedId == id) { _expandedId = null; _sessions = null; return; }
+        _expandedId = id;
+        _sessions = null;
+        StateHasChanged();
+        _sessions = await SessionSvc.ListForInstanceAsync(id);
+    }
+}

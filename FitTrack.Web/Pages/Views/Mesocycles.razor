@@ -1,0 +1,276 @@
+@page "/mesocycles"
+@inject IMesocycleService MesoSvc
+@inject IExerciseService ExerciseSvc
+
+<h1>Mesocycles</h1>
+
+<div class="card">
+    <div class="card-row">
+        <h3>Your templates</h3>
+        <button class="btn" @onclick="() => StartNew()">New mesocycle</button>
+    </div>
+    @if (_mesocycles.Count == 0)
+    {
+        <p style="color: var(--text-dim);">No mesocycle templates yet.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead><tr><th>Name</th><th>Weeks</th><th>Workouts</th><th>Description</th><th style="width:180px;"></th></tr></thead>
+            <tbody>
+                @foreach (var m in _mesocycles)
+                {
+                    <tr>
+                        <td>@m.Name</td>
+                        <td>@m.DurationWeeks</td>
+                        <td>@m.Workouts.Count</td>
+                        <td>@m.Description</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" @onclick="() => Edit(m)">Edit</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => Delete(m.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@if (_editing is not null)
+{
+    <div class="card">
+        <h3>@(_editingId is null ? "New" : "Edit") mesocycle</h3>
+        <div class="form-row">
+            <label>Name</label>
+            <input @bind="_editing.Name" style="flex: 1; max-width: 400px;" />
+        </div>
+        <div class="form-row">
+            <label>Weeks</label>
+            <input type="number" min="1" max="52" @bind="_editing.DurationWeeks" />
+        </div>
+        <div class="form-row">
+            <label>Ramp-up week</label>
+            <input type="checkbox" @bind="_editing.HasRampUpWeek" style="width:auto;" />
+            <span style="margin-left:8px; color: var(--text-dim);">Week 1 uses 1 set per exercise</span>
+        </div>
+        <div class="form-row">
+            <label>Description</label>
+            <input @bind="_editing.Description" style="flex: 1; max-width: 600px;" />
+        </div>
+
+        <h3 style="margin-top: 20px;">Workout days</h3>
+        @foreach (var w in _editing.Workouts)
+        {
+            <div class="card" style="background: var(--panel-2);">
+                <div class="form-row">
+                    <label>Day order</label>
+                    <input type="number" min="1" max="7" @bind="w.DayOrder" />
+                    <label style="margin-left: 20px;">Name</label>
+                    <input @bind="w.Name" style="flex: 1; max-width: 300px;" />
+                    <button class="btn btn-sm btn-ghost" @onclick="() => CopyWorkout(w)" title="Duplicate this day">Copy day</button>
+                    <button class="btn btn-sm btn-danger" @onclick="() => RemoveWorkout(w)">Remove day</button>
+                </div>
+
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Exercise</th>
+                            <th>Sets</th>
+                            <th>Reps</th>
+                            <th>Weight (kg)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in w.Exercises)
+                        {
+                            <tr>
+                                <td><input type="number" style="width:60px;" @bind="p.OrderIndex" /></td>
+                                <td>
+                                    <select @bind="p.ExerciseId">
+                                        <option value="0">-- pick exercise --</option>
+                                        @foreach (var ex in _exercises)
+                                        {
+                                            <option value="@ex.Id">@ex.Name</option>
+                                        }
+                                    </select>
+                                </td>
+                                <td><input type="number" min="1" style="width:60px;" @bind="p.TargetSets" /></td>
+                                <td><input type="number" min="1" style="width:60px;" @bind="p.TargetReps" /></td>
+                                <td><input type="number" step="0.5" min="0" style="width:80px;" @bind="p.TargetWeightKg" /></td>
+                                <td><button class="btn btn-sm btn-danger" @onclick="() => RemoveExercise(w, p)">×</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <button class="btn btn-sm btn-ghost" @onclick="() => AddExercise(w)">+ Exercise</button>
+            </div>
+        }
+        <button class="btn btn-ghost" @onclick="AddWorkout">+ Add workout day</button>
+
+        <div style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="btn" @onclick="Save" disabled="@_busy">Save</button>
+            <button class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<MesocycleDto> _mesocycles = new();
+    private List<ExerciseDto> _exercises = new();
+    private EditModel? _editing;
+    private int? _editingId;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _exercises = await ExerciseSvc.ListAsync();
+        await Reload();
+    }
+
+    private async Task Reload() => _mesocycles = await MesoSvc.ListAsync();
+
+    private void StartNew()
+    {
+        _editingId = null;
+        _editing = new EditModel
+        {
+            Name = "",
+            DurationWeeks = 4,
+            Workouts = new()
+            {
+                new WorkoutEdit { Name = "Day 1", DayOrder = 1, Exercises = new() }
+            }
+        };
+    }
+
+    private void Edit(MesocycleDto m)
+    {
+        _editingId = m.Id;
+        _editing = new EditModel
+        {
+            Name = m.Name,
+            Description = m.Description,
+            DurationWeeks = m.DurationWeeks,
+            HasRampUpWeek = m.HasRampUpWeek,
+            Workouts = m.Workouts.Select(w => new WorkoutEdit
+            {
+                Name = w.Name,
+                DayOrder = w.DayOrder,
+                Exercises = w.PlannedExercises.Select(p => new PlannedEdit
+                {
+                    ExerciseId = p.ExerciseId,
+                    TargetSets = p.TargetSets,
+                    TargetReps = p.TargetReps,
+                    TargetWeightKg = p.TargetWeightKg,
+                    OrderIndex = p.OrderIndex
+                }).ToList()
+            }).ToList()
+        };
+    }
+
+    private void AddWorkout()
+    {
+        _editing!.Workouts.Add(new WorkoutEdit
+        {
+            Name = $"Day {_editing.Workouts.Count + 1}",
+            DayOrder = _editing.Workouts.Count + 1,
+            Exercises = new()
+        });
+    }
+
+    private void RemoveWorkout(WorkoutEdit w) => _editing!.Workouts.Remove(w);
+
+    private void CopyWorkout(WorkoutEdit source)
+    {
+        var nextOrder = _editing!.Workouts.Count + 1;
+        _editing.Workouts.Add(new WorkoutEdit
+        {
+            Name = $"{source.Name} (copy)",
+            DayOrder = nextOrder,
+            Exercises = source.Exercises.Select(p => new PlannedEdit
+            {
+                ExerciseId = p.ExerciseId,
+                TargetSets = p.TargetSets,
+                TargetReps = p.TargetReps,
+                TargetWeightKg = p.TargetWeightKg,
+                OrderIndex = p.OrderIndex
+            }).ToList()
+        });
+    }
+
+    private void AddExercise(WorkoutEdit w)
+    {
+        w.Exercises.Add(new PlannedEdit
+        {
+            ExerciseId = _exercises.FirstOrDefault()?.Id ?? 0,
+            TargetSets = 3,
+            TargetReps = 8,
+            TargetWeightKg = 20m,
+            OrderIndex = w.Exercises.Count + 1
+        });
+    }
+
+    private void RemoveExercise(WorkoutEdit w, PlannedEdit p) => w.Exercises.Remove(p);
+
+    private async Task Save()
+    {
+        if (_editing is null || string.IsNullOrWhiteSpace(_editing.Name)) return;
+        _busy = true;
+        var dto = new CreateMesocycleDto(
+            _editing.Name.Trim(),
+            _editing.Description,
+            Math.Max(1, _editing.DurationWeeks),
+            _editing.HasRampUpWeek,
+            _editing.Workouts.Select(w => new CreateMesocycleWorkoutDto(
+                w.Name,
+                w.DayOrder,
+                w.Exercises.Where(p => p.ExerciseId > 0).Select(p => new CreatePlannedExerciseDto(
+                    p.ExerciseId, p.TargetSets, p.TargetReps, p.TargetWeightKg, p.OrderIndex
+                )).ToList()
+            )).ToList()
+        );
+
+        if (_editingId is null)
+            await MesoSvc.CreateAsync(dto);
+        else
+            await MesoSvc.UpdateAsync(_editingId.Value, dto);
+
+        _editing = null;
+        _editingId = null;
+        await Reload();
+        _busy = false;
+    }
+
+    private void Cancel() { _editing = null; _editingId = null; }
+
+    private async Task Delete(int id)
+    {
+        await MesoSvc.DeleteAsync(id);
+        await Reload();
+    }
+
+    private class EditModel
+    {
+        public string Name { get; set; } = "";
+        public string? Description { get; set; }
+        public int DurationWeeks { get; set; } = 4;
+        public bool HasRampUpWeek { get; set; } = true;
+        public List<WorkoutEdit> Workouts { get; set; } = new();
+    }
+    private class WorkoutEdit
+    {
+        public string Name { get; set; } = "";
+        public int DayOrder { get; set; }
+        public List<PlannedEdit> Exercises { get; set; } = new();
+    }
+    private class PlannedEdit
+    {
+        public int ExerciseId { get; set; }
+        public int TargetSets { get; set; }
+        public int TargetReps { get; set; }
+        public decimal TargetWeightKg { get; set; }
+        public int OrderIndex { get; set; }
+    }
+}

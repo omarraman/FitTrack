@@ -1,0 +1,189 @@
+﻿@page "/progress"
+@inject IMesocycleInstanceService InstanceSvc
+@inject IWorkoutSessionService SessionSvc
+
+<h1>Exercise progression</h1>
+
+<div class="card">
+    <div class="form-row">
+        <label>Instance</label>
+        <select value="@_instance1Id" @onchange="OnInstance1Changed">
+            <option value="0">-- select instance --</option>
+            @foreach (var i in _instances)
+            {
+                <option value="@i.Id">@i.MesocycleName — @i.StartDate.ToString("yyyy-MM-dd") [@i.Status]</option>
+            }
+        </select>
+    </div>
+
+    @if (_samesMeso.Any())
+    {
+        <div class="form-row">
+            <label>Compare with</label>
+            <select value="@_instance2Id" @onchange="OnInstance2Changed">
+                <option value="0">— none —</option>
+                @foreach (var i in _samesMeso)
+                {
+                    <option value="@i.Id">@i.StartDate.ToString("yyyy-MM-dd") [@i.Status]</option>
+                }
+            </select>
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <p style="margin: 1rem;">Loading…</p>
+}
+else if (_instance1Id > 0 && _exerciseNames.Any())
+{
+    <div style="margin-bottom: 8px; color: var(--text-dim); font-size: 13px; padding: 0 4px;">
+        Weights shown are the maximum actual weight lifted per week.
+        Dots with no actual weight logged fall back to the target weight (shown dimmed).
+    </div>
+
+    @foreach (var ex in _exerciseNames)
+    {
+        <div class="card" style="padding-bottom: 8px;">
+            <h3 style="margin-bottom: 0;">@ex</h3>
+            <ExerciseProgressChart ExerciseName="@ex"
+                                   Series1="@GetSeries(_data1, ex)"
+                                   Series1Label="@GetLabel(_instance1Id)"
+                                   Series2="@(_instance2Id > 0 ? GetSeries(_data2, ex) : null)"
+                                   Series2Label="@(_instance2Id > 0 ? GetLabel(_instance2Id) : null)" />
+        </div>
+    }
+}
+else if (_instance1Id > 0)
+{
+    <div class="card"><p style="color: var(--text-dim);">No session data found for this instance yet.</p></div>
+}
+
+@code {
+    private List<MesocycleInstanceDto> _instances = new();
+    private List<MesocycleInstanceDto> _samesMeso = new();
+
+    private int _instance1Id;
+    private int _instance2Id;
+
+    private bool _loading;
+
+    // Processed data: exercise name → list of (week, maxWeight)
+    private Dictionary<string, List<ExerciseProgressChart.WeekPoint>> _data1 = new();
+    private Dictionary<string, List<ExerciseProgressChart.WeekPoint>> _data2 = new();
+    private List<string> _exerciseNames = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _instances = await InstanceSvc.ListAsync();
+
+        // Auto-select the most recent active instance if one exists
+        var active = _instances.FirstOrDefault(i => i.Status == MesocycleInstanceStatus.Active);
+        if (active is not null)
+        {
+            _instance1Id = active.Id;
+            await LoadInstance1Sessions();
+        }
+    }
+
+    private async Task OnInstance1Changed(ChangeEventArgs e)
+    {
+        _instance1Id = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _instance2Id = 0;
+        _data2 = new();
+        _samesMeso = new();
+        _exerciseNames = new();
+        _data1 = new();
+
+        if (_instance1Id > 0)
+            await LoadInstance1Sessions();
+    }
+
+    private async Task OnInstance2Changed(ChangeEventArgs e)
+    {
+        _instance2Id = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        _data2 = new();
+
+        if (_instance2Id > 0)
+        {
+            _loading = true;
+            StateHasChanged();
+            var sessions = await SessionSvc.ListForInstanceAsync(_instance2Id);
+            _data2 = ProcessSessions(sessions);
+            _loading = false;
+        }
+    }
+
+    private async Task LoadInstance1Sessions()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        var sessions = await SessionSvc.ListForInstanceAsync(_instance1Id);
+        _data1 = ProcessSessions(sessions);
+        _exerciseNames = _data1.Keys.OrderBy(x => x).ToList();
+
+        // Build comparison dropdown: other instances of the same mesocycle
+        var selected = _instances.FirstOrDefault(i => i.Id == _instance1Id);
+        _samesMeso = selected is null
+            ? new()
+            : _instances
+                .Where(i => i.MesocycleId == selected.MesocycleId && i.Id != _instance1Id)
+                .OrderByDescending(i => i.StartDate)
+                .ToList();
+
+        _loading = false;
+    }
+
+    /// <summary>
+    /// For each session, per exercise: take the max actual weight across all sets that week.
+    /// If no actual weight was logged, fall back to the target weight.
+    /// </summary>
+    private static Dictionary<string, List<ExerciseProgressChart.WeekPoint>> ProcessSessions(
+        List<WorkoutSessionDto> sessions)
+    {
+        var result = new Dictionary<string, List<ExerciseProgressChart.WeekPoint>>();
+
+        // Group all logs by exercise name, then by week
+        var byExercise = sessions
+            .SelectMany(s => s.Logs.Select(l => (s.WeekNumber, Log: l)))
+            .GroupBy(x => x.Log.ExerciseName);
+
+        foreach (var exGroup in byExercise)
+        {
+            var points = exGroup
+                .GroupBy(x => x.WeekNumber)
+                .Select(wkGroup =>
+                {
+                    var actuals = wkGroup
+                        .Where(x => x.Log.ActualWeightKg.HasValue)
+                        .Select(x => x.Log.ActualWeightKg!.Value)
+                        .ToList();
+
+                    var weight = actuals.Any()
+                        ? actuals.Max()
+                        : wkGroup.Max(x => x.Log.TargetWeightKg);
+
+                    return new ExerciseProgressChart.WeekPoint(wkGroup.Key, weight);
+                })
+                .OrderBy(p => p.Week)
+                .ToList();
+
+            result[exGroup.Key] = points;
+        }
+
+        return result;
+    }
+
+    private static List<ExerciseProgressChart.WeekPoint> GetSeries(
+        Dictionary<string, List<ExerciseProgressChart.WeekPoint>> data,
+        string exercise)
+        => data.TryGetValue(exercise, out var pts) ? pts : new();
+
+    private string GetLabel(int instanceId)
+    {
+        var inst = _instances.FirstOrDefault(i => i.Id == instanceId);
+        return inst is null ? $"Instance {instanceId}" : inst.StartDate.ToString("yyyy-MM-dd");
+    }
+}
+

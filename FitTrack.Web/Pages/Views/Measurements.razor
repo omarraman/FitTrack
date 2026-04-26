@@ -1,0 +1,146 @@
+@page "/measurements"
+@inject IBodyPartMeasurementService Svc
+
+<h1>Body measurements</h1>
+
+<div class="card">
+    <h3>Log measurement</h3>
+    <div class="form-row">
+        <label>Date</label>
+        <input type="date" @bind="_date" />
+        <label style="margin-left: 20px;">Body part</label>
+        <select @bind="_part">
+            @foreach (var p in AllParts)
+            {
+                <option value="@p">@p.ToString()</option>
+            }
+        </select>
+        <label style="margin-left: 20px;">Value (cm)</label>
+        <input type="number" step="0.1" min="0" @bind="_value" style="width: 110px;" />
+    </div>
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_notes" style="flex: 1; max-width: 500px;" />
+    </div>
+    <button class="btn btn-primary" @onclick="Add" disabled="@(_value is null or <= 0 || _busy)">Save</button>
+</div>
+
+<div class="card">
+    <h3>Filter</h3>
+    <div class="form-row">
+        <label>Show</label>
+        <select @bind="_filter" @bind:after="Reload">
+            <option value="">All body parts</option>
+            @foreach (var p in AllParts)
+            {
+                <option value="@p.ToString()">@p.ToString()</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (_items.Count > 0)
+{
+    <div class="card">
+        <h3>Trends by body part</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+            @foreach (var grp in _items.GroupBy(i => i.BodyPart).OrderBy(g => g.Key))
+            {
+                var series = grp.OrderBy(i => i.MeasuredOn).ToList();
+                var latest = series.Last();
+                var first = series.First();
+                var delta = latest.ValueCm - first.ValueCm;
+                <div style="background: var(--panel-2); border-radius: 6px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                        <strong>@grp.Key.ToString()</strong>
+                        <span style="color: var(--text-dim); font-size: 0.9em;">@series.Count entries</span>
+                    </div>
+                    <div style="display: flex; gap: 14px; margin: 6px 0 10px 0;">
+                        <div><span style="color: var(--text-dim);">Latest:</span> <strong>@latest.ValueCm cm</strong></div>
+                        <div><span style="color: var(--text-dim);">Change:</span> <strong>@delta.ToString("+0.0;-0.0;0") cm</strong></div>
+                    </div>
+                    <svg viewBox="0 0 300 90" width="100%" height="90" style="background: var(--panel); border-radius: 4px;">
+                        @{
+                            if (series.Count >= 2)
+                            {
+                                var min = series.Min(i => (double)i.ValueCm);
+                                var max = series.Max(i => (double)i.ValueCm);
+                                if (Math.Abs(max - min) < 0.001) { min -= 1; max += 1; }
+                                var w = 280.0; var h = 70.0; var x0 = 10.0; var y0 = 10.0;
+                                string points = string.Join(" ", series.Select((p, i) =>
+                                {
+                                    double x = x0 + (i / (double)(series.Count - 1)) * w;
+                                    double y = y0 + h - ((double)p.ValueCm - min) / (max - min) * h;
+                                    return $"{x:0.#},{y:0.#}";
+                                }));
+                                <polyline points="@points" fill="none" stroke="#4f8cff" stroke-width="2" />
+                            }
+                            else
+                            {
+                                var only = series[0];
+                                <circle cx="150" cy="45" r="3" fill="#4f8cff" />
+                                @((MarkupString)"<text x='150' y='60' text-anchor='middle' fill='#888' font-size='10'>single entry</text>")
+                            }
+                        }
+                    </svg>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div class="card">
+    <h3>History</h3>
+    <table class="table">
+        <thead><tr><th>Date</th><th>Body part</th><th>Value (cm)</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var b in _items)
+            {
+                <tr>
+                    <td>@b.MeasuredOn.ToString("yyyy-MM-dd")</td>
+                    <td>@b.BodyPart.ToString()</td>
+                    <td>@b.ValueCm</td>
+                    <td>@b.Notes</td>
+                    <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(b.Id)">Delete</button></td>
+                </tr>
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="5" style="color: var(--text-dim);">No measurements yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private static readonly BodyPart[] AllParts = Enum.GetValues<BodyPart>();
+    private List<BodyPartMeasurementDto> _items = new();
+    private DateTime _date = DateTime.Today;
+    private BodyPart _part = BodyPart.Bicep;
+    private decimal? _value;
+    private string? _notes;
+    private string _filter = "";
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        BodyPart? p = null;
+        if (!string.IsNullOrEmpty(_filter) && Enum.TryParse<BodyPart>(_filter, out var parsed)) p = parsed;
+        _items = await Svc.ListAsync(p);
+    }
+
+    private async Task Add()
+    {
+        if (_value is null || _value <= 0) return;
+        _busy = true;
+        await Svc.CreateAsync(new UpsertBodyPartMeasurementDto(
+            DateOnly.FromDateTime(_date), _part, _value.Value, _notes));
+        _value = null; _notes = null;
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+}

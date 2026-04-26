@@ -1,0 +1,118 @@
+@page "/colds"
+@inject IColdEpisodeService Svc
+
+<h1>Cold tracker</h1>
+
+<div class="card">
+    <h3>Log cold episode</h3>
+    <div class="form-row">
+        <label>Start date</label>
+        <input type="date" @bind="_start" />
+    </div>
+    <div class="form-row">
+        <label>End date</label>
+        <input type="date" @bind="_end" />
+    </div>
+    <div class="form-row">
+        <label>Severity</label>
+        <select @bind="_sev">
+            @foreach (var v in Enum.GetValues<ColdSeverity>())
+            {
+                <option value="@v">@((int)v) – @v</option>
+            }
+        </select>
+    </div>
+    <div class="form-row">
+        <label>Symptoms</label>
+        <input @bind="_symptoms" placeholder="e.g. runny nose, sore throat" style="flex: 1; max-width: 500px;" />
+    </div>
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_notes" style="flex: 1; max-width: 500px;" />
+    </div>
+    <button class="btn" @onclick="Add" disabled="@_busy">Save</button>
+</div>
+
+<div class="card">
+    <div class="card-row">
+        <h3>Episodes</h3>
+        <div>
+            <label style="color: var(--text-dim); margin-right: 8px;">Year</label>
+            <select @bind="_year" @bind:after="Reload">
+                <option value="0">All</option>
+                @for (int y = DateTime.Now.Year; y >= DateTime.Now.Year - 6; y--)
+                {
+                    <option value="@y">@y</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_items.Count > 0)
+    {
+        <div class="grid" style="margin-bottom: 16px;">
+            <div class="metric"><div class="label">Episodes</div><div class="value">@_items.Count</div></div>
+            <div class="metric"><div class="label">Avg severity</div><div class="value">@_items.Average(i => (int)i.Severity).ToString("0.0")</div></div>
+            <div class="metric"><div class="label">Days sick</div><div class="value">@TotalDaysSick()</div></div>
+        </div>
+    }
+
+    <table class="table">
+        <thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Severity</th><th>Symptoms</th><th>Notes</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var c in _items)
+            {
+                <tr>
+                    <td>@c.StartDate.ToString("yyyy-MM-dd")</td>
+                    <td>@(c.EndDate?.ToString("yyyy-MM-dd") ?? "(ongoing)")</td>
+                    <td>@(c.EndDate.HasValue ? (c.EndDate.Value.DayNumber - c.StartDate.DayNumber + 1) + " days" : "—")</td>
+                    <td><span class="badge @(c.Severity >= ColdSeverity.Severe ? "err" : c.Severity >= ColdSeverity.Moderate ? "warn" : "")">@c.Severity</span></td>
+                    <td>@c.Symptoms</td>
+                    <td>@c.Notes</td>
+                    <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(c.Id)">Delete</button></td>
+                </tr>
+            }
+            @if (_items.Count == 0)
+            {
+                <tr><td colspan="7" style="color: var(--text-dim);">No episodes yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<ColdEpisodeDto> _items = new();
+    private DateTime _start = DateTime.Today;
+    private DateTime? _end;
+    private ColdSeverity _sev = ColdSeverity.Mild;
+    private string? _symptoms;
+    private string? _notes;
+    private bool _busy;
+    private int _year;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _year = DateTime.Now.Year;
+        await Reload();
+    }
+
+    private async Task Reload() => _items = await Svc.ListAsync(_year == 0 ? null : _year);
+
+    private async Task Add()
+    {
+        _busy = true;
+        await Svc.CreateAsync(new UpsertColdEpisodeDto(
+            DateOnly.FromDateTime(_start),
+            _end.HasValue ? DateOnly.FromDateTime(_end.Value) : null,
+            _sev, _symptoms, _notes));
+        _end = null; _symptoms = null; _notes = null; _sev = ColdSeverity.Mild;
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+
+    private int TotalDaysSick() => _items
+        .Where(i => i.EndDate.HasValue)
+        .Sum(i => i.EndDate!.Value.DayNumber - i.StartDate.DayNumber + 1);
+}

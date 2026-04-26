@@ -1,0 +1,172 @@
+﻿@page "/cardio"
+@inject ICardioSessionService CardioSvc
+
+<h1>Cardio sessions</h1>
+
+<div class="card">
+    <h3>@(_editingId is null ? "Log new session" : "Edit session")</h3>
+    <div class="form-row">
+        <label>Date</label>
+        <input type="date" @bind="_date" />
+    </div>
+    <div class="form-row">
+        <label>Duration (min)</label>
+        <input type="number" min="1" max="600" @bind="_duration" style="width:100px;" />
+    </div>
+    <div class="form-row">
+        <label>Calories</label>
+        <input type="number" min="0" @bind="_calories" style="width:100px;" />
+    </div>
+    <div class="form-row">
+        <label>Avg watts</label>
+        <input type="number" min="0" @bind="_watts" style="width:100px;" />
+    </div>
+    <div class="form-row">
+        <label>Max speed (km/h)</label>
+        <input type="number" min="0" step="0.1" @bind="_maxSpeed" style="width:100px;" />
+    </div>
+    <div class="form-row">
+        <label>Max heart rate</label>
+        <input type="number" min="0" max="250" @bind="_maxHr" style="width:100px;" placeholder="optional" />
+    </div>
+    <div class="form-row">
+        <label>Notes</label>
+        <input @bind="_notes" style="flex:1; max-width:500px;" />
+    </div>
+    <div style="display:flex; gap:10px; margin-top:8px;">
+        <button class="btn" @onclick="Save" disabled="@_busy">@(_editingId is null ? "Log session" : "Save changes")</button>
+        @if (_editingId is not null)
+        {
+            <button class="btn btn-ghost" @onclick="CancelEdit">Cancel</button>
+        }
+    </div>
+    @if (_error is not null)
+    {
+        <p style="color:var(--err); margin-top:8px;">@_error</p>
+    }
+</div>
+
+<div class="card">
+    <h3>Session history</h3>
+    @if (_sessions.Count == 0)
+    {
+        <p style="color:var(--text-dim);">No sessions logged yet.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Duration</th>
+                    <th>Calories</th>
+                    <th>Avg W</th>
+                    <th>Max km/h</th>
+                    <th>Max HR</th>
+                    <th>Notes</th>
+                    <th style="width:120px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _sessions)
+                {
+                    <tr>
+                        <td>@s.SessionDate.ToString("yyyy-MM-dd")</td>
+                        <td>@s.DurationMinutes min</td>
+                        <td>@s.Calories kcal</td>
+                        <td>@s.Watts W</td>
+                        <td>@s.MaxSpeedKph km/h</td>
+                        <td>
+                            @if (s.MaxHeartRate.HasValue)
+                            {
+                                <span>@s.MaxHeartRate bpm</span>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-dim);">—</span>
+                            }
+                        </td>
+                        <td style="color:var(--text-dim);">@s.Notes</td>
+                        <td>
+                            <button class="btn btn-sm btn-ghost" @onclick="() => StartEdit(s)">Edit</button>
+                            <button class="btn btn-sm btn-danger" @onclick="() => Delete(s.Id)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private List<CardioSessionDto> _sessions = new();
+    private bool _busy;
+    private string? _error;
+
+    // form state
+    private int? _editingId;
+    private DateTime _date = DateTime.Today;
+    private int _duration = 45;
+    private int _calories;
+    private int _watts;
+    private decimal _maxSpeed;
+    private int? _maxHr;
+    private string? _notes;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload() => _sessions = await CardioSvc.ListAsync();
+
+    private async Task Save()
+    {
+        _error = null;
+        if (_duration <= 0) { _error = "Duration must be greater than 0."; return; }
+        _busy = true;
+
+        var dto = new UpsertCardioSessionDto(
+            DateOnly.FromDateTime(_date),
+            _duration, _calories, _watts, _maxSpeed, _maxHr > 0 ? _maxHr : null, _notes);
+
+        if (_editingId is null)
+            await CardioSvc.CreateAsync(dto);
+        else
+            await CardioSvc.UpdateAsync(_editingId.Value, dto);
+
+        ResetForm();
+        await Reload();
+        _busy = false;
+    }
+
+    private void StartEdit(CardioSessionDto s)
+    {
+        _editingId = s.Id;
+        _date = s.SessionDate.ToDateTime(TimeOnly.MinValue);
+        _duration = s.DurationMinutes;
+        _calories = s.Calories;
+        _watts = s.Watts;
+        _maxSpeed = s.MaxSpeedKph;
+        _maxHr = s.MaxHeartRate;
+        _notes = s.Notes;
+    }
+
+    private void CancelEdit() => ResetForm();
+
+    private async Task Delete(int id)
+    {
+        await CardioSvc.DeleteAsync(id);
+        await Reload();
+    }
+
+    private void ResetForm()
+    {
+        _editingId = null;
+        _date = DateTime.Today;
+        _duration = 45;
+        _calories = 0;
+        _watts = 0;
+        _maxSpeed = 0;
+        _maxHr = null;
+        _notes = null;
+        _error = null;
+    }
+}
