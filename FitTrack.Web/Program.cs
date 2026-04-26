@@ -96,5 +96,6 @@ app.MapControllers();
 app.MapRazorPages(); // required for /MicrosoftIdentity/Account/SignIn and /SignOut endpoints
 app.MapBlazorHub().AllowAnonymous();
 app.MapFallbackToPage("/_Host");
+//test comment
 
 app.Run();
