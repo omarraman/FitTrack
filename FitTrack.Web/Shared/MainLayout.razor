@@ -1,7 +1,22 @@
 @inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Components.Authorization
 
-<div class="app">
+<div class="app @(_navOpen ? "nav-open" : "")">
+
+    <!-- Mobile top bar -->
+    <header class="mobile-header">
+        <button class="hamburger" @onclick="ToggleNav" aria-label="Toggle navigation">
+            <span></span><span></span><span></span>
+        </button>
+        <span class="mobile-brand">FitTrack</span>
+    </header>
+
+    <!-- Overlay to close sidebar on mobile -->
+    @if (_navOpen)
+    {
+        <div class="nav-overlay" @onclick="CloseNav"></div>
+    }
+
     <aside class="sidebar">
         <div class="brand">
             <h2>FitTrack</h2>
@@ -27,30 +42,38 @@
         </AuthorizeView>
 
         <nav>
-            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All">Today</NavLink>
+            <NavLink class="nav-item" href="/" Match="NavLinkMatch.All" @onclick="CloseNav">Today</NavLink>
             <div class="nav-group">Workouts</div>
-            <NavLink class="nav-item" href="/exercises">Exercises</NavLink>
-            <NavLink class="nav-item" href="/mesocycles">Mesocycles</NavLink>
-            <NavLink class="nav-item" href="/instances">Instances</NavLink>
-            <NavLink class="nav-item" href="/progress">Progression</NavLink>
+            <NavLink class="nav-item" href="/exercises" @onclick="CloseNav">Exercises</NavLink>
+            <NavLink class="nav-item" href="/mesocycles" @onclick="CloseNav">Mesocycles</NavLink>
+            <NavLink class="nav-item" href="/instances" @onclick="CloseNav">Instances</NavLink>
+            <NavLink class="nav-item" href="/progress" @onclick="CloseNav">Progression</NavLink>
 
             <div class="nav-group">Health</div>
-            <NavLink class="nav-item" href="/cardio">Cardio</NavLink>
-            <NavLink class="nav-item" href="/body">Bodyweight</NavLink>
-            <NavLink class="nav-item" href="/measurements">Measurements</NavLink>
-            <NavLink class="nav-item" href="/blood-pressure">Blood pressure</NavLink>
-            <NavLink class="nav-item" href="/colds">Cold tracker</NavLink>
+            <NavLink class="nav-item" href="/cardio" @onclick="CloseNav">Cardio</NavLink>
+            <NavLink class="nav-item" href="/body" @onclick="CloseNav">Bodyweight</NavLink>
+            <NavLink class="nav-item" href="/measurements" @onclick="CloseNav">Measurements</NavLink>
+            <NavLink class="nav-item" href="/blood-pressure" @onclick="CloseNav">Blood pressure</NavLink>
+            <NavLink class="nav-item" href="/colds" @onclick="CloseNav">Cold tracker</NavLink>
 
             <div class="nav-group">Nutrition</div>
-            <NavLink class="nav-item" href="/foods">Foods</NavLink>
-            <NavLink class="nav-item" href="/recipes">Recipes</NavLink>
-            <NavLink class="nav-item" href="/diary">Food diary</NavLink>
+            <NavLink class="nav-item" href="/foods" @onclick="CloseNav">Foods</NavLink>
+            <NavLink class="nav-item" href="/recipes" @onclick="CloseNav">Recipes</NavLink>
+            <NavLink class="nav-item" href="/diary" @onclick="CloseNav">Food diary</NavLink>
         </nav>
         <div class="sidebar-footer">
             <a href="/swagger" target="_blank">API (Swagger)</a>
         </div>
     </aside>
+
     <main class="content">
         @Body
     </main>
 </div>
+
+@code {
+    private bool _navOpen;
+
+    private void ToggleNav() => _navOpen = !_navOpen;
+    private void CloseNav() => _navOpen = false;
+}

@@ -178,6 +178,201 @@ input[type="date"], input[type="datetime-local"] { width: 180px; }
     top: 0.5rem;
 }
 
+/* ============================================================
+   MOBILE HEADER & HAMBURGER
+   ============================================================ */
+
+.mobile-header {
+    display: none;
+}
+
+.hamburger {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--text);
+}
+.hamburger span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--text);
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.mobile-brand {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    margin-left: 10px;
+}
+
+/* Overlay behind open sidebar */
+.nav-overlay {
+    display: none;
+}
+
+/* ============================================================
+   RESPONSIVE BREAKPOINTS
+   ============================================================ */
+
+@media (max-width: 767px) {
+
+    /* Stack layout: mobile header on top, content below */
+    .app {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+    }
+
+    /* Show mobile header bar */
+    .mobile-header {
+        display: flex;
+        align-items: center;
+        background: var(--panel);
+        border-bottom: 1px solid var(--border);
+        padding: 10px 16px;
+        position: sticky;
+        top: 0;
+        z-index: 200;
+    }
+
+    /* Sidebar becomes a slide-in drawer */
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 260px;
+        z-index: 300;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        overflow-y: auto;
+        border-right: 1px solid var(--border);
+    }
+
+    /* Sidebar visible when nav-open class is on .app */
+    .nav-open .sidebar {
+        transform: translateX(0);
+    }
+
+    /* Dimmed overlay */
+    .nav-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 250;
+    }
+
+    /* Content takes full width, reduced padding */
+    .content {
+        padding: 16px;
+        max-width: 100%;
+        width: 100%;
+    }
+
+    /* Tables scroll horizontally instead of breaking layout */
+    .table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Form rows stack vertically */
+    .form-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .form-row label {
+        min-width: unset;
+        margin-bottom: 4px;
+    }
+    .form-row input,
+    .form-row select,
+    .form-row textarea {
+        width: 100%;
+    }
+
+    /* Inputs fill width */
+    input, select, textarea {
+        width: 100%;
+        max-width: 100%;
+    }
+    input[type="number"] { width: 100%; }
+    input[type="date"],
+    input[type="datetime-local"] { width: 100%; }
+    input[type="checkbox"] { width: auto; }
+
+    /* Card rows wrap and stack on small screens */
+    .card-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .card-row > * { width: 100%; }
+
+    /* Grid becomes single column */
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Buttons: full width stacked */
+    .btn {
+        width: 100%;
+        text-align: center;
+    }
+    .btn + .btn,
+    .btn-sm + .btn-sm {
+        margin-top: 6px;
+    }
+    /* But small inline action buttons shouldn't be full-width */
+    .btn-sm {
+        width: auto;
+    }
+
+    /* Cards: tighter padding */
+    .card {
+        padding: 14px;
+    }
+
+    /* Metrics */
+    .metric .value { font-size: 18px; }
+
+    h1 { font-size: 19px; }
+    h2 { font-size: 16px; }
+}
+
+/* ============================================================
+   TABLET (768px – 1024px): narrow but not mobile
+   ============================================================ */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .app {
+        grid-template-columns: 200px 1fr;
+    }
+    .content {
+        padding: 20px 24px;
+    }
+    .mobile-header { display: none; }
+}
+
+/* ============================================================
+   DESKTOP: hide mobile header
+   ============================================================ */
+@media (min-width: 768px) {
+    .app {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+    }
+    .mobile-header { display: none; }
+    .nav-overlay { display: none !important; }
+    .sidebar { transform: none !important; position: static; }
+}
+
 /* --- User chip in sidebar (auth) --- */
 .user-chip {
     margin: 8px 16px 12px;

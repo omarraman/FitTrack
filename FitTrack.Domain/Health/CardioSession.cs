@@ -27,4 +27,3 @@ public class CardioSession : Entity
 
     public string? Notes { get; set; }
 }
-
