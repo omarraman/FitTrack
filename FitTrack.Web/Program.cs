@@ -5,11 +5,25 @@ using FitTrack.Infrastructure.Persistence;
 using FitTrack.Web.Auth;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.Identity.Web;
 using Microsoft.Identity.Web.UI;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Forwarded headers: required when running behind Cloudflare / reverse proxy
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+
+    // In local homelab / tunnel setups, clear these so forwarded headers are accepted.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // --- Authentication: OpenID Connect against the tenant's Entra authority ---
 builder.Services
@@ -53,6 +67,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
+// IMPORTANT: this must run early so auth sees the original https scheme/host
+app.UseForwardedHeaders();
+
 // Migrate + seed on startup
 using (var scope = app.Services.CreateScope())
 {
@@ -65,6 +82,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Optional but usually correct when public traffic is HTTPS at Cloudflare
+app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseRouting();
