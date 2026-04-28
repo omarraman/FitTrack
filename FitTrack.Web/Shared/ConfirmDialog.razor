@@ -1,0 +1,52 @@
+﻿@inject ConfirmService ConfirmSvc
+@implements IDisposable
+
+@if (_visible)
+{
+    <div class="confirm-overlay" @onclick="Cancel">
+        <div class="confirm-modal" @onclick:stopPropagation="true">
+            <p class="confirm-message">@_message</p>
+            <div class="confirm-actions">
+                <button class="btn btn-danger" @onclick="Confirm">@_confirmLabel</button>
+                <button class="btn btn-ghost" @onclick="Cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _message = "";
+    private string _confirmLabel = "Delete";
+
+    protected override void OnInitialized()
+    {
+        ConfirmSvc.Register(Show);
+    }
+
+    private Task Show(string message, string confirmLabel)
+    {
+        _message = message;
+        _confirmLabel = confirmLabel;
+        _visible = true;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private void Confirm()
+    {
+        _visible = false;
+        StateHasChanged();
+        ConfirmSvc.Complete(true);
+    }
+
+    private void Cancel()
+    {
+        _visible = false;
+        StateHasChanged();
+        ConfirmSvc.Complete(false);
+    }
+
+    public void Dispose() => ConfirmSvc.Unregister();
+}
+
+

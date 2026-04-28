@@ -39,7 +39,7 @@ else
         {
             <div class="card" style="background: var(--panel-2);">
                 <h3 style="color: var(--text);">@group.Key.ExerciseName</h3>
-                <table class="table">
+                <table class="table workout-log-table">
                     <thead>
                         <tr>
                             <th style="width: 60px;">Set</th>
@@ -54,24 +54,24 @@ else
                         @foreach (var log in group.OrderBy(l => l.SetNumber))
                         {
                             <tr>
-                                <td>@log.SetNumber</td>
-                                <td><span class="badge">@log.TargetReps × @log.TargetWeightKg kg</span></td>
-                                <td>
+                                <td data-label="Set">@log.SetNumber</td>
+                                <td data-label="Target"><span class="badge">@log.TargetReps × @log.TargetWeightKg kg</span></td>
+                                <td data-label="Actual reps">
                                     <input type="number" min="0" step="1"
                                            value="@_edits[log.Id].Reps"
                                            @onchange="@((ChangeEventArgs e) => OnRepsChanged(log.Id, e))" />
                                 </td>
-                                <td>
+                                <td data-label="Actual kg">
                                     <input type="number" min="0" step="0.5"
                                            value="@_edits[log.Id].Kg"
                                            @onchange="@((ChangeEventArgs e) => OnKgChanged(log.Id, e))" />
                                 </td>
-                                <td>
-                                    <input type="text" style="width: 160px;"
+                                <td data-label="Notes">
+                                    <input type="text"
                                            value="@_edits[log.Id].Notes"
                                            @onchange="@((ChangeEventArgs e) => OnNotesChanged(log.Id, e))" />
                                 </td>
-                                <td>
+                                <td data-label="Action">
                                     <button class="btn btn-sm" @onclick="() => SaveLog(log.Id)" disabled="@_busy">Log</button>
                                     @if (log.PerformedAt is not null)
                                     {

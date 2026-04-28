@@ -1,0 +1,15 @@
+﻿apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fittrack-backups-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  # Remove the storageClassName line if your cluster has a default storage class
+  # (Docker Desktop, Rancher Desktop, and most local clusters do).
+  # Uncomment and set to match your cluster if you need a specific class:
+  # storageClassName: standard
+

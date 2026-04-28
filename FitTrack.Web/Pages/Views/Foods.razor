@@ -1,5 +1,6 @@
 @page "/foods"
 @inject IFoodService Svc
+@inject ConfirmService ConfirmSvc
 
 <h1>Foods</h1>
 
@@ -97,5 +98,10 @@
         _busy = false;
     }
 
-    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this food? It will be removed from any recipes and diary entries.")) return;
+        await Svc.DeleteAsync(id);
+        await Reload();
+    }
 }

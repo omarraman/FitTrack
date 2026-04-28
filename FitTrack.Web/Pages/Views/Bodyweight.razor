@@ -1,5 +1,6 @@
 @page "/body"
 @inject IBodyMeasurementService Svc
+@inject ConfirmService ConfirmSvc
 
 <h1>Bodyweight</h1>
 
@@ -109,7 +110,12 @@
         _busy = false;
     }
 
-    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this bodyweight measurement?")) return;
+        await Svc.DeleteAsync(id);
+        await Reload();
+    }
 
     private decimal Avg(int days)
     {

@@ -86,12 +86,50 @@ docker build -t fittrack-web:ci-latest .
 # 3. Apply manifests
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
+# Note: backup-pvc.yaml is only needed if you switch to the PVC volume approach
 
 # 4. Verify rollout
 kubectl rollout status deployment/fittrack-web
 ```
 
 The app is reachable at **http://localhost:30080** once the pod is ready.
+
+## Backup storage
+
+### Local cluster (Docker Desktop) — hostPath volume
+`deployment.yaml` uses a `hostPath` volume so backups are written directly to your Windows machine at:
+
+```
+C:\FitTrack\backups\
+```
+
+Docker Desktop maps the special Linux path `/run/desktop/mnt/host/c/...` to the corresponding `C:\...` Windows path. The folder is created automatically the first time the pod starts. You can browse backup zips in Explorer like any other folder — no `kubectl` commands needed.
+
+> **Note:** If you are using minikube or kind instead of Docker Desktop, the `hostPath` points to a folder inside the VM, not your Windows filesystem. In that case switch back to the PVC approach — uncomment the `persistentVolumeClaim` block in `deployment.yaml` and apply `backup-pvc.yaml` first.
+
+### Production / real cluster — PersistentVolumeClaim
+For a non-local cluster, replace the `hostPath` volume in `deployment.yaml` with:
+
+```yaml
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: fittrack-backups-pvc
+```
+
+And apply the PVC once:
+```powershell
+kubectl apply -f k8s/backup-pvc.yaml
+```
+
+To copy backups down from a PVC-backed pod:
+```powershell
+# List backups
+kubectl exec deployment/fittrack-web -- ls /data/backups
+
+# Copy all backups to local machine
+kubectl cp fittrack-web/<pod-name>:/data/backups ./local-backups
+```
 
 ## Updating after a code change
 

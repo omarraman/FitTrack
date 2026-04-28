@@ -58,12 +58,8 @@ public class BloodPressureController : ControllerBase
     [HttpGet] public Task<List<BloodPressureDto>> List(CancellationToken ct) => _svc.ListAsync(ct);
 
     [HttpPost]
-    public async Task<ActionResult<BloodPressureDto>> Create(UpsertBloodPressureDto dto, CancellationToken ct)
-        => Ok(await _svc.CreateAsync(dto, ct));
-
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> Update(int id, UpsertBloodPressureDto dto, CancellationToken ct)
-        => await _svc.UpdateAsync(id, dto, ct) ? NoContent() : NotFound();
+    public async Task<ActionResult<BloodPressureDto>> LogSession(LogBpSessionDto dto, CancellationToken ct)
+        => Ok(await _svc.LogSessionAsync(dto, ct));
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)

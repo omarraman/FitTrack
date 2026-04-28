@@ -17,10 +17,21 @@ public record UpsertBodyPartMeasurementDto(
     DateOnly MeasuredOn, BodyPart BodyPart, decimal ValueCm, string? Notes);
 
 public record BloodPressureDto(
-    int Id, DateTimeOffset MeasuredAt, int Systolic, int Diastolic, int? Pulse, string? Notes);
+    int Id, DateTimeOffset MeasuredAt, BpSessionType? SessionType,
+    int Systolic, int Diastolic, int? Pulse, string? Notes);
 
-public record UpsertBloodPressureDto(
-    DateTimeOffset MeasuredAt, int Systolic, int Diastolic, int? Pulse, string? Notes);
+/// <summary>One raw reading within a 5-reading BP session.</summary>
+public record BpReadingInput(int Systolic, int Diastolic, int? Pulse);
+
+/// <summary>
+/// Submit a morning or evening session of up to 5 readings.
+/// The service computes the rounded average and stores a single row.
+/// </summary>
+public record LogBpSessionDto(
+    DateOnly MeasuredOn,
+    BpSessionType SessionType,
+    List<BpReadingInput> Readings,
+    string? Notes);
 
 public record ColdEpisodeDto(
     int Id, DateOnly StartDate, DateOnly? EndDate,

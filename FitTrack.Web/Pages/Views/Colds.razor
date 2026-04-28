@@ -1,5 +1,6 @@
 @page "/colds"
 @inject IColdEpisodeService Svc
+@inject ConfirmService ConfirmSvc
 
 <h1>Cold tracker</h1>
 
@@ -110,7 +111,12 @@
         _busy = false;
     }
 
-    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this cold episode record?")) return;
+        await Svc.DeleteAsync(id);
+        await Reload();
+    }
 
     private int TotalDaysSick() => _items
         .Where(i => i.EndDate.HasValue)

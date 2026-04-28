@@ -121,9 +121,36 @@ public class MesocycleService : IMesocycleService
     public async Task<bool> DeleteAsync(int id, CancellationToken ct = default)
     {
         RequireAdmin();
-        var m = await _db.Mesocycles.FindAsync(new object?[] { id }, ct);
+
+        var m = await _db.Mesocycles
+            .Include(m => m.Workouts)
+                .ThenInclude(w => w.PlannedExercises)
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
         if (m is null) return false;
+
+        // Load all instances with their sessions and logs so EF can cascade the deletes.
+        var instances = await _db.MesocycleInstances
+            .Include(i => i.Sessions)
+                .ThenInclude(s => s.Logs)
+            .Where(i => i.MesocycleId == id)
+            .ToListAsync(ct);
+
+        foreach (var instance in instances)
+        {
+            foreach (var session in instance.Sessions)
+            {
+                _db.ExerciseLogs.RemoveRange(session.Logs);
+            }
+            _db.WorkoutSessions.RemoveRange(instance.Sessions);
+        }
+        _db.MesocycleInstances.RemoveRange(instances);
+
+        // Remove template children, then the template itself.
+        foreach (var w in m.Workouts)
+            _db.PlannedExercises.RemoveRange(w.PlannedExercises);
+        _db.MesocycleWorkouts.RemoveRange(m.Workouts);
         _db.Mesocycles.Remove(m);
+
         await _db.SaveChangesAsync(ct);
         return true;
     }

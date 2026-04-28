@@ -1,5 +1,6 @@
 @page "/exercises"
 @inject IExerciseService ExerciseSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Exercises</h1>
 
@@ -150,6 +151,7 @@
 
     private async Task Delete(int id)
     {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this exercise? It will also be removed from any mesocycle templates.")) return;
         await ExerciseSvc.DeleteAsync(id);
         await Reload();
     }

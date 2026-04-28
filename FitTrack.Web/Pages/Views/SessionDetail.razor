@@ -1,4 +1,4 @@
-Ôªø@page "/session/{SessionId:int}"
+@page "/session/{SessionId:int}"
 @inject IWorkoutSessionService SessionSvc
 @inject NavigationManager Nav
 
@@ -6,7 +6,7 @@
 
 @if (_loading)
 {
-    <p>Loading‚Ä¶</p>
+    <p>LoadingÖ</p>
 }
 else if (_session is null)
 {
@@ -53,7 +53,7 @@ else
                         {
                             <tr>
                                 <td>@log.SetNumber</td>
-                                <td><span class="badge">@log.TargetReps √ó @log.TargetWeightKg kg</span></td>
+                                <td><span class="badge">@log.TargetReps ◊ @log.TargetWeightKg kg</span></td>
                                 <td>
                                     @if (log.ActualReps.HasValue)
                                     {
@@ -64,7 +64,7 @@ else
                                     }
                                     else
                                     {
-                                        <span style="color:var(--text-dim);">‚Äî</span>
+                                        <span style="color:var(--text-dim);">ó</span>
                                     }
                                 </td>
                                 <td>
@@ -74,7 +74,7 @@ else
                                     }
                                     else
                                     {
-                                        <span style="color:var(--text-dim);">‚Äî</span>
+                                        <span style="color:var(--text-dim);">ó</span>
                                     }
                                 </td>
                                 <td style="color:var(--text-dim);">@log.Notes</td>
@@ -86,7 +86,7 @@ else
         }
 
         <div style="margin-top: 16px;">
-            <button class="btn btn-ghost" @onclick='() => Nav.NavigateTo("/instances")'>‚Üê Back</button>
+            <button class="btn btn-ghost" @onclick='() => Nav.NavigateTo("/instances")'>? Back</button>
         </div>
     </div>
 }

@@ -3,6 +3,7 @@ using FitTrack.Application.Abstractions;
 using FitTrack.Infrastructure;
 using FitTrack.Infrastructure.Persistence;
 using FitTrack.Web.Auth;
+using FitTrack.Web.BackgroundServices;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -60,6 +61,12 @@ builder.Services.AddServerSideBlazor();
 // HttpContext access for Blazor Server + our current-user resolver
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<FitTrack.Web.Services.ConfirmService>();
+
+// Scheduled SQL backup
+builder.Services.Configure<BackupSettings>(builder.Configuration.GetSection(BackupSettings.Section));
+builder.Services.AddSingleton<SqlBackupService>();
+builder.Services.AddHostedService<BackupHostedService>();
 
 // App layers
 builder.Services.AddApplication();

@@ -155,8 +155,7 @@ public class BodyPartMeasurementService : IBodyPartMeasurementService
 public interface IBloodPressureService
 {
     Task<List<BloodPressureDto>> ListAsync(CancellationToken ct = default);
-    Task<BloodPressureDto> CreateAsync(UpsertBloodPressureDto dto, CancellationToken ct = default);
-    Task<bool> UpdateAsync(int id, UpsertBloodPressureDto dto, CancellationToken ct = default);
+    Task<BloodPressureDto> LogSessionAsync(LogBpSessionDto dto, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, CancellationToken ct = default);
 }
 
@@ -177,41 +176,40 @@ public class BloodPressureService : IBloodPressureService
         return await _db.BloodPressureReadings.AsNoTracking()
             .Where(b => b.UserId == userId)
             .OrderByDescending(b => b.MeasuredAt)
-            .Select(b => new BloodPressureDto(b.Id, b.MeasuredAt, b.Systolic, b.Diastolic, b.Pulse, b.Notes))
+            .Select(b => new BloodPressureDto(b.Id, b.MeasuredAt, b.SessionType, b.Systolic, b.Diastolic, b.Pulse, b.Notes))
             .ToListAsync(ct);
     }
 
-    public async Task<BloodPressureDto> CreateAsync(UpsertBloodPressureDto dto, CancellationToken ct = default)
+    public async Task<BloodPressureDto> LogSessionAsync(LogBpSessionDto dto, CancellationToken ct = default)
     {
         var userId = _current.RequireUserId();
+
+        var valid = dto.Readings.Where(r => r.Systolic > 0 && r.Diastolic > 0).ToList();
+        if (valid.Count == 0)
+            throw new ArgumentException("At least one complete reading (systolic + diastolic) is required.");
+
+        var avgSys  = (int)Math.Round(valid.Average(r => r.Systolic));
+        var avgDia  = (int)Math.Round(valid.Average(r => r.Diastolic));
+        var pulseReadings = valid.Where(r => r.Pulse is > 0).Select(r => r.Pulse!.Value).ToList();
+        int? avgPulse = pulseReadings.Count > 0 ? (int)Math.Round(pulseReadings.Average()) : null;
+
+        // Use noon UTC on the given date so it sorts naturally in history.
+        var measuredAt = new DateTimeOffset(dto.MeasuredOn.Year, dto.MeasuredOn.Month, dto.MeasuredOn.Day,
+            dto.SessionType == BpSessionType.Morning ? 8 : 20, 0, 0, TimeSpan.Zero);
+
         var b = new BloodPressureReading
         {
-            UserId = userId,
-            MeasuredAt = dto.MeasuredAt,
-            Systolic = dto.Systolic,
-            Diastolic = dto.Diastolic,
-            Pulse = dto.Pulse,
-            Notes = dto.Notes
+            UserId      = userId,
+            MeasuredAt  = measuredAt,
+            SessionType = dto.SessionType,
+            Systolic    = avgSys,
+            Diastolic   = avgDia,
+            Pulse       = avgPulse,
+            Notes       = dto.Notes
         };
         _db.BloodPressureReadings.Add(b);
         await _db.SaveChangesAsync(ct);
-        return new BloodPressureDto(b.Id, b.MeasuredAt, b.Systolic, b.Diastolic, b.Pulse, b.Notes);
-    }
-
-    public async Task<bool> UpdateAsync(int id, UpsertBloodPressureDto dto, CancellationToken ct = default)
-    {
-        var userId = _current.RequireUserId();
-        var b = await _db.BloodPressureReadings.FindAsync(new object?[] { id }, ct);
-        if (b is null) return false;
-        if (b.UserId != userId) throw new ForbiddenException("You do not own this reading.");
-        b.MeasuredAt = dto.MeasuredAt;
-        b.Systolic = dto.Systolic;
-        b.Diastolic = dto.Diastolic;
-        b.Pulse = dto.Pulse;
-        b.Notes = dto.Notes;
-        b.UpdatedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(ct);
-        return true;
+        return new BloodPressureDto(b.Id, b.MeasuredAt, b.SessionType, b.Systolic, b.Diastolic, b.Pulse, b.Notes);
     }
 
     public async Task<bool> DeleteAsync(int id, CancellationToken ct = default)

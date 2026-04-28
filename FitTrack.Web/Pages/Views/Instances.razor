@@ -2,6 +2,7 @@
 @inject IMesocycleInstanceService InstanceSvc
 @inject IMesocycleService MesoSvc
 @inject IWorkoutSessionService SessionSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Mesocycle instances</h1>
 
@@ -160,7 +161,13 @@
     }
 
     private async Task Complete(int id) { await InstanceSvc.CompleteAsync(id); await Reload(); }
-    private async Task Abandon(int id) { await InstanceSvc.AbandonAsync(id); await Reload(); }
+
+    private async Task Abandon(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Abandon this mesocycle instance? This cannot be undone.", "Abandon")) return;
+        await InstanceSvc.AbandonAsync(id);
+        await Reload();
+    }
 
     private async Task ToggleSessions(int id)
     {

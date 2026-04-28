@@ -1,4 +1,4 @@
-ï»¿@page "/progress"
+@page "/progress"
 @inject IMesocycleInstanceService InstanceSvc
 @inject IWorkoutSessionService SessionSvc
 
@@ -11,7 +11,7 @@
             <option value="0">-- select instance --</option>
             @foreach (var i in _instances)
             {
-                <option value="@i.Id">@i.MesocycleName â€” @i.StartDate.ToString("yyyy-MM-dd") [@i.Status]</option>
+                <option value="@i.Id">@i.MesocycleName — @i.StartDate.ToString("yyyy-MM-dd") [@i.Status]</option>
             }
         </select>
     </div>
@@ -21,7 +21,7 @@
         <div class="form-row">
             <label>Compare with</label>
             <select value="@_instance2Id" @onchange="OnInstance2Changed">
-                <option value="0">â€” none â€”</option>
+                <option value="0">— none —</option>
                 @foreach (var i in _samesMeso)
                 {
                     <option value="@i.Id">@i.StartDate.ToString("yyyy-MM-dd") [@i.Status]</option>
@@ -33,7 +33,7 @@
 
 @if (_loading)
 {
-    <p style="margin: 1rem;">Loadingâ€¦</p>
+    <p style="margin: 1rem;">Loading…</p>
 }
 else if (_instance1Id > 0 && _exerciseNames.Any())
 {
@@ -68,7 +68,7 @@ else if (_instance1Id > 0)
 
     private bool _loading;
 
-    // Processed data: exercise name â†’ list of (week, maxWeight)
+    // Processed data: exercise name ? list of (week, maxWeight)
     private Dictionary<string, List<ExerciseProgressChart.WeekPoint>> _data1 = new();
     private Dictionary<string, List<ExerciseProgressChart.WeekPoint>> _data2 = new();
     private List<string> _exerciseNames = new();

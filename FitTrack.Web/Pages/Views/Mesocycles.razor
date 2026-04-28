@@ -1,6 +1,7 @@
 @page "/mesocycles"
 @inject IMesocycleService MesoSvc
 @inject IExerciseService ExerciseSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Mesocycles</h1>
 
@@ -68,10 +69,9 @@
                     <label style="margin-left: 20px;">Name</label>
                     <input @bind="w.Name" style="flex: 1; max-width: 300px;" />
                     <button class="btn btn-sm btn-ghost" @onclick="() => CopyWorkout(w)" title="Duplicate this day">Copy day</button>
-                    <button class="btn btn-sm btn-danger" @onclick="() => RemoveWorkout(w)">Remove day</button>
-                </div>
+                    <button class="btn btn-sm btn-danger" @onclick="() => RemoveWorkout(w)">Remove day</button>                </div>
 
-                <table class="table">
+                <table class="table exercise-table">
                     <thead>
                         <tr>
                             <th>Order</th>
@@ -86,8 +86,9 @@
                         @foreach (var p in w.Exercises)
                         {
                             <tr>
-                                <td><input type="number" style="width:60px;" @bind="p.OrderIndex" /></td>
-                                <td>
+                                <td data-label="Order"><input type="number" style="width:60px;" @bind="p.OrderIndex" /></td>
+                                <td data-label="Exercise">
+                                    <span class="exercise-name-display">@(_exercises.FirstOrDefault(e => e.Id == p.ExerciseId)?.Name ?? "— pick exercise —")</span>
                                     <select @bind="p.ExerciseId">
                                         <option value="0">-- pick exercise --</option>
                                         @foreach (var ex in _exercises)
@@ -96,11 +97,10 @@
                                         }
                                     </select>
                                 </td>
-                                <td><input type="number" min="1" style="width:60px;" @bind="p.TargetSets" /></td>
-                                <td><input type="number" min="1" style="width:60px;" @bind="p.TargetReps" /></td>
-                                <td><input type="number" step="0.5" min="0" style="width:80px;" @bind="p.TargetWeightKg" /></td>
-                                <td><button class="btn btn-sm btn-danger" @onclick="() => RemoveExercise(w, p)">×</button></td>
-                            </tr>
+                                <td data-label="Sets"><input type="number" min="1" style="width:60px;" @bind="p.TargetSets" /></td>
+                                <td data-label="Reps"><input type="number" min="1" style="width:60px;" @bind="p.TargetReps" /></td>
+                                <td data-label="Weight (kg)"><input type="number" step="0.5" min="0" style="width:80px;" @bind="p.TargetWeightKg" /></td>
+                                <td><button class="btn btn-sm btn-danger" @onclick="() => RemoveExercise(w, p)">×</button></td>                            </tr>
                         }
                     </tbody>
                 </table>
@@ -180,7 +180,11 @@
         });
     }
 
-    private void RemoveWorkout(WorkoutEdit w) => _editing!.Workouts.Remove(w);
+    private async Task RemoveWorkout(WorkoutEdit w)
+    {
+        if (!await ConfirmSvc.ConfirmAsync($"Remove workout day \"{w.Name}\"?", "Remove")) return;
+        _editing!.Workouts.Remove(w);
+    }
 
     private void CopyWorkout(WorkoutEdit source)
     {
@@ -211,8 +215,6 @@
             OrderIndex = w.Exercises.Count + 1
         });
     }
-
-    private void RemoveExercise(WorkoutEdit w, PlannedEdit p) => w.Exercises.Remove(p);
 
     private async Task Save()
     {
@@ -247,8 +249,16 @@
 
     private async Task Delete(int id)
     {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this mesocycle? All associated instances and session history will also be permanently deleted.")) return;
         await MesoSvc.DeleteAsync(id);
         await Reload();
+    }
+
+    private async Task RemoveExercise(WorkoutEdit w, PlannedEdit p)
+    {
+        var name = _exercises.FirstOrDefault(e => e.Id == p.ExerciseId)?.Name ?? "this exercise";
+        if (!await ConfirmSvc.ConfirmAsync($"Remove {name} from this day?", "Remove")) return;
+        w.Exercises.Remove(p);
     }
 
     private class EditModel

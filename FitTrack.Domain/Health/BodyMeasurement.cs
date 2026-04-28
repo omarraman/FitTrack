@@ -13,6 +13,12 @@ public class BodyMeasurement : Entity
     public string? Notes { get; set; }
 }
 
+public enum BpSessionType
+{
+    Morning = 0,
+    Evening = 1
+}
+
 public class BloodPressureReading : Entity
 {
     public int UserId { get; set; }
@@ -21,4 +27,10 @@ public class BloodPressureReading : Entity
     public int Diastolic { get; set; }
     public int? Pulse { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Morning or Evening session. Null for readings recorded before the
+    /// session-based workflow was introduced.
+    /// </summary>
+    public BpSessionType? SessionType { get; set; }
 }

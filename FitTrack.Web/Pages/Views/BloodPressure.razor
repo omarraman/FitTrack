@@ -1,41 +1,115 @@
 @page "/blood-pressure"
 @inject IBloodPressureService Svc
+@inject ConfirmService ConfirmSvc
 
 <h1>Blood pressure</h1>
 
 <div class="card">
-    <h3>Log reading</h3>
+    <h3>Log session</h3>
+    <p style="color: var(--text-dim); margin-top: 0; font-size: 13px;">
+        Enter up to 5 readings. The app will save the rounded average.
+    </p>
+
     <div class="form-row">
-        <label>Measured at</label>
-        <input type="datetime-local" @bind="_when" />
+        <label>Date</label>
+        <input type="date" @bind="_date" />
+        <label style="margin-left: 20px;">Session</label>
+        <select @bind="_sessionType" style="width: 130px;">
+            <option value="@BpSessionType.Morning">Morning</option>
+            <option value="@BpSessionType.Evening">Evening</option>
+        </select>
     </div>
-    <div class="form-row">
-        <label>Systolic</label>
-        <input type="number" min="50" max="260" @bind="_sys" />
-        <label style="margin-left: 20px;">Diastolic</label>
-        <input type="number" min="30" max="160" @bind="_dia" />
-        <label style="margin-left: 20px;">Pulse</label>
-        <input type="number" min="30" max="240" @bind="_pulse" />
-    </div>
-    <div class="form-row">
+
+    <table class="table" style="margin: 12px 0;">
+        <thead>
+            <tr>
+                <th style="width: 60px;">#</th>
+                <th>Systolic</th>
+                <th>Diastolic</th>
+                <th>Pulse <span style="color: var(--text-dim); font-weight: 400;">(optional)</span></th>
+            </tr>
+        </thead>
+        <tbody>
+            @for (int i = 0; i < _readings.Count; i++)
+            {
+                var idx = i;
+                var r = _readings[idx];
+                <tr>
+                    <td style="color: var(--text-dim);">@(idx + 1)</td>
+                    <td><input type="number" min="50" max="260" @bind="r.Systolic" @bind:after="StateHasChanged" style="width: 90px;" /></td>
+                    <td><input type="number" min="30" max="160" @bind="r.Diastolic" @bind:after="StateHasChanged" style="width: 90px;" /></td>
+                    <td><input type="number" min="30" max="240" @bind="r.Pulse" style="width: 90px;" placeholder="—" /></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @{
+        var valid = _readings.Where(r => r.Systolic > 0 && r.Diastolic > 0).ToList();
+        if (valid.Count > 0)
+        {
+            var avgSys = (int)Math.Round(valid.Average(r => r.Systolic));
+            var avgDia = (int)Math.Round(valid.Average(r => r.Diastolic));
+            var pulses = valid.Where(r => r.Pulse > 0).Select(r => r.Pulse).ToList();
+            var avgPulse = pulses.Count > 0 ? (int?)Math.Round(pulses.Average(p => p!.Value)) : null;
+            <div class="bp-avg-preview">
+                <span class="bp-avg-label">Average of @valid.Count reading@(valid.Count == 1 ? "" : "s"):</span>
+                <span class="bp-avg-value">@avgSys / @avgDia</span>
+                @if (avgPulse.HasValue) { <span class="bp-avg-pulse">Pulse: @avgPulse</span> }
+                @CategoryBadge(avgSys, avgDia)
+            </div>
+        }
+    }
+
+    <div class="form-row" style="margin-top: 12px;">
         <label>Notes</label>
         <input @bind="_notes" style="flex: 1; max-width: 500px;" />
     </div>
-    <button class="btn" @onclick="Add" disabled="@(_sys is null || _dia is null || _busy)">Save</button>
+
+    <button class="btn" @onclick="Save" disabled="@(_busy || !_readings.Any(r => r.Systolic > 0 && r.Diastolic > 0))">
+        Save session
+    </button>
+    @if (_error is not null)
+    {
+        <p style="color: var(--err); margin-top: 8px;">@_error</p>
+    }
 </div>
 
 <div class="card">
     <h3>History</h3>
     <table class="table">
-        <thead><tr><th>When</th><th>Systolic</th><th>Diastolic</th><th>Pulse</th><th>Category</th><th>Notes</th><th></th></tr></thead>
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Session</th>
+                <th>Systolic</th>
+                <th>Diastolic</th>
+                <th>Pulse</th>
+                <th>Category</th>
+                <th>Notes</th>
+                <th></th>
+            </tr>
+        </thead>
         <tbody>
             @foreach (var r in _items)
             {
                 <tr>
-                    <td>@r.MeasuredAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>@r.MeasuredAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                    <td>
+                        @if (r.SessionType.HasValue)
+                        {
+                            <span class="badge @(r.SessionType == BpSessionType.Morning ? "ok" : "warn")">
+                                @r.SessionType
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="badge">—</span>
+                        }
+                    </td>
                     <td>@r.Systolic</td>
                     <td>@r.Diastolic</td>
-                    <td>@r.Pulse</td>
+                    <td>@(r.Pulse?.ToString() ?? "—")</td>
                     <td>@CategoryBadge(r.Systolic, r.Diastolic)</td>
                     <td>@r.Notes</td>
                     <td><button class="btn btn-sm btn-danger" @onclick="() => Delete(r.Id)">Delete</button></td>
@@ -43,44 +117,63 @@
             }
             @if (_items.Count == 0)
             {
-                <tr><td colspan="7" style="color: var(--text-dim);">No readings yet.</td></tr>
+                <tr><td colspan="8" style="color: var(--text-dim);">No readings yet.</td></tr>
             }
         </tbody>
     </table>
 </div>
 
 @code {
+    private class ReadingRow
+    {
+        public int Systolic { get; set; }
+        public int Diastolic { get; set; }
+        public int? Pulse { get; set; }
+    }
+
     private List<BloodPressureDto> _items = new();
-    private DateTime _when = DateTime.Now;
-    private int? _sys;
-    private int? _dia;
-    private int? _pulse;
+    private List<ReadingRow> _readings = Enumerable.Range(0, 5).Select(_ => new ReadingRow()).ToList();
+    private DateTime _date = DateTime.Today;
+    private BpSessionType _sessionType = BpSessionType.Morning;
     private string? _notes;
     private bool _busy;
+    private string? _error;
 
     protected override async Task OnInitializedAsync() => await Reload();
     private async Task Reload() => _items = await Svc.ListAsync();
 
-    private async Task Add()
+    private async Task Save()
     {
-        if (_sys is null || _dia is null) return;
+        _error = null;
         _busy = true;
-        await Svc.CreateAsync(new UpsertBloodPressureDto(
-            new DateTimeOffset(_when, TimeZoneInfo.Local.GetUtcOffset(_when)),
-            _sys.Value, _dia.Value, _pulse, _notes));
-        _sys = null; _dia = null; _pulse = null; _notes = null;
-        await Reload();
+        try
+        {
+            var dto = new LogBpSessionDto(
+                DateOnly.FromDateTime(_date),
+                _sessionType,
+                _readings.Select(r => new BpReadingInput(r.Systolic, r.Diastolic, r.Pulse > 0 ? r.Pulse : null)).ToList(),
+                _notes);
+            await Svc.LogSessionAsync(dto);
+            _readings = Enumerable.Range(0, 5).Select(_ => new ReadingRow()).ToList();
+            _notes = null;
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
         _busy = false;
     }
 
-    private async Task Delete(int id) { await Svc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this blood pressure reading?")) return;
+        await Svc.DeleteAsync(id);
+        await Reload();
+    }
 
-    // American Heart Association categories.
     private static RenderFragment CategoryBadge(int sys, int dia) => b =>
     {
         string label;
         string cls;
-        if (sys >= 180 || dia >= 120) { label = "Hypertensive crisis"; cls = "err"; }
+        if (sys >= 180 || dia >= 120) { label = "Crisis"; cls = "err"; }
         else if (sys >= 140 || dia >= 90) { label = "Stage 2"; cls = "err"; }
         else if (sys >= 130 || dia >= 80) { label = "Stage 1"; cls = "warn"; }
         else if (sys >= 120) { label = "Elevated"; cls = "warn"; }

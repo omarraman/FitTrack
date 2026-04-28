@@ -2,6 +2,7 @@
 @inject IMealEntryService MealSvc
 @inject IFoodService FoodSvc
 @inject IRecipeService RecipeSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Food diary</h1>
 
@@ -165,7 +166,12 @@
         _busy = false;
     }
 
-    private async Task Delete(int id) { await MealSvc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Remove this diary entry?", "Remove")) return;
+        await MealSvc.DeleteAsync(id);
+        await Reload();
+    }
 
     private async Task Prev() { _date = _date.AddDays(-1); await Reload(); }
     private async Task Next() { _date = _date.AddDays(1); await Reload(); }

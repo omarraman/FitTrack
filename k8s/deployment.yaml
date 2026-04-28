@@ -43,6 +43,8 @@ spec:
                 secretKeyRef:
                   name: fittrack-secrets
                   key: AzureAd__Domain
+            - name: Backup__BackupDirectory
+              value: /data/backups
           readinessProbe:
             httpGet:
               path: /
@@ -55,6 +57,9 @@ spec:
               port: 8080
             initialDelaySeconds: 20
             periodSeconds: 30
+          volumeMounts:
+            - name: backups
+              mountPath: /data/backups
           resources:
             requests:
               memory: "256Mi"
@@ -62,3 +67,11 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+      volumes:
+        - name: backups
+          hostPath:
+            # This folder will be created automatically on the node.
+            # On Docker Desktop for Windows this maps to C:\FitTrack\backups
+            # on your local machine via the Docker Desktop filesystem bridge.
+            path: /run/desktop/mnt/host/c/FitTrack/backups
+            type: DirectoryOrCreate

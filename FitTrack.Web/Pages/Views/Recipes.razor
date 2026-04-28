@@ -1,6 +1,7 @@
 @page "/recipes"
 @inject IRecipeService RecipeSvc
 @inject IFoodService FoodSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Recipes</h1>
 
@@ -78,7 +79,7 @@
                         <td>@(food is null ? "—" : (food.ProteinPer100g * factor).ToString("0.#"))</td>
                         <td>@(food is null ? "—" : (food.CarbsPer100g * factor).ToString("0.#"))</td>
                         <td>@(food is null ? "—" : (food.FatPer100g * factor).ToString("0.#"))</td>
-                        <td><button class="btn btn-sm btn-danger" @onclick="() => _editing!.Ingredients.Remove(i)">×</button></td>
+                        <td><button class="btn btn-sm btn-danger" @onclick="() => RemoveIngredient(i)">×</button></td>
                     </tr>
                 }
             </tbody>
@@ -147,7 +148,19 @@
 
     private void Cancel() { _editing = null; _editingId = null; }
 
-    private async Task Delete(int id) { await RecipeSvc.DeleteAsync(id); await Reload(); }
+    private async Task Delete(int id)
+    {
+        if (!await ConfirmSvc.ConfirmAsync("Delete this recipe? This cannot be undone.")) return;
+        await RecipeSvc.DeleteAsync(id);
+        await Reload();
+    }
+
+    private async Task RemoveIngredient(IngEdit i)
+    {
+        var name = _foods.FirstOrDefault(f => f.Id == i.FoodId)?.Name ?? "this ingredient";
+        if (!await ConfirmSvc.ConfirmAsync($"Remove {name} from this recipe?", "Remove")) return;
+        _editing!.Ingredients.Remove(i);
+    }
 
     private class RecipeEdit
     {
