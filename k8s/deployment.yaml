@@ -14,7 +14,8 @@ spec:
     spec:
       containers:
         - name: fittrack-web
-          image: fittrack-web:ci-latest
+          image: ghcr.io/omarraman/fittrack-web:ci-latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
@@ -70,8 +71,5 @@ spec:
       volumes:
         - name: backups
           hostPath:
-            # This folder will be created automatically on the node.
-            # On Docker Desktop for Windows this maps to C:\FitTrack\backups
-            # on your local machine via the Docker Desktop filesystem bridge.
-            path: /run/desktop/mnt/host/c/FitTrack/backups
+            path: /home/omar-raman/FitTrack/backups
             type: DirectoryOrCreate

@@ -1,38 +1,72 @@
-﻿name: CI on self-hosted (FitTrack)
+﻿name: CI
 
 on:
   push:
     branches: [ master ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build-and-deploy:
-    runs-on: self-hosted
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image_tag: ${{ steps.vars.outputs.image_tag }}
+      image_name: ${{ steps.vars.outputs.image_name }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Restore & test
-        shell: cmd
-        run: |
-          dotnet restore
-          dotnet test
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
 
-      - name: Build Docker image
-        shell: cmd
-        run: |
-          set IMAGE_TAG=%GITHUB_SHA:~0,7%
-          echo Building image fittrack-web:%IMAGE_TAG%
-          docker build -t fittrack-web:%IMAGE_TAG% -t fittrack-web:ci-latest -f Dockerfile .
+      - name: Restore
+        run: dotnet restore
 
-      - name: Deploy manifests
-        shell: cmd
+      - name: Test
+        run: dotnet test --no-restore
+
+      - name: Set image variables
+        id: vars
         run: |
-          kubectl apply -f k8s\deployment.yaml
-          kubectl apply -f k8s\service.yaml
+          echo "image_tag=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "image_name=ghcr.io/${{ github.repository_owner }}/fittrack-web" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image_name }}:ci-latest
+            ${{ steps.vars.outputs.image_name }}:${{ steps.vars.outputs.image_tag }}
+
+  deploy:
+    runs-on: [self-hosted, linux]
+    needs: build-and-push
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Apply manifests
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
 
       - name: Update deployment image
-        shell: cmd
         run: |
-          set IMAGE_TAG=%GITHUB_SHA:~0,7%
-          echo Updating fittrack-web deployment to image fittrack-web:%IMAGE_TAG%
-          kubectl set image deployment/fittrack-web fittrack-web=fittrack-web:%IMAGE_TAG%
+          kubectl set image deployment/fittrack-web fittrack-web=ghcr.io/${{ github.repository_owner }}/fittrack-web:${{ needs.build-and-push.outputs.image_tag }}
