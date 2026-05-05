@@ -53,6 +53,12 @@ public class WorkoutSession : Entity
     /// <summary>Week number within the instance (1-based).</summary>
     public int WeekNumber { get; set; }
 
+    /// <summary>
+    /// True when this session has been deliberately skipped (e.g. closing a week early).
+    /// Skipped sessions are excluded from "next pending" logic.
+    /// </summary>
+    public bool IsSkipped { get; set; }
+
     public string? Notes { get; set; }
 
     public List<ExerciseLog> Logs { get; set; } = new();

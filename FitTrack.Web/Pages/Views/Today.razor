@@ -1,6 +1,7 @@
 @page "/"
 @inject IWorkoutSessionService SessionSvc
 @inject IMesocycleInstanceService InstanceSvc
+@inject ConfirmService ConfirmSvc
 
 <h1>Today's workout</h1>
 
@@ -17,23 +18,25 @@ else if (_session is null)
 }
 else
 {
-    <div class="card">
-        <div class="card-row">
-            <div>
-                <h2>@_session.WorkoutName <span class="badge">Week @_session.WeekNumber</span></h2>
-                <small style="color: var(--text-dim);">Scheduled @_session.ScheduledDate.ToString("yyyy-MM-dd")</small>
+        <div class="card">
+            <div class="card-row">
+                <div>
+                    <h2>@_session.WorkoutName <span class="badge">Week @_session.WeekNumber</span></h2>
+                    <small style="color: var(--text-dim);">Originally scheduled @_session.ScheduledDate.ToString("yyyy-MM-dd")</small>
+                </div>
+                <div>
+                    @if (_session.CompletedAt is not null)
+                    {
+                        <span class="badge ok">Completed @_session.CompletedAt.Value.ToLocalTime():HH:mm</span>
+                    }
+                    else
+                    {
+                        <button class="btn btn-ok" @onclick="CompleteSession" disabled="@_busy">Mark session complete</button>
+                        <button class="btn btn-sm btn-ghost" style="margin-top:6px;" @onclick="SkipSession" disabled="@_busy">Skip this session</button>
+                        <button class="btn btn-sm btn-ghost" style="margin-top:6px;" @onclick="SkipWeek" disabled="@_busy">Close week @_session.WeekNumber early</button>
+                    }
+                </div>
             </div>
-            <div>
-                @if (_session.CompletedAt is not null)
-                {
-                    <span class="badge ok">Completed @_session.CompletedAt.Value.ToLocalTime():HH:mm</span>
-                }
-                else
-                {
-                    <button class="btn btn-ok" @onclick="CompleteSession" disabled="@_busy">Mark session complete</button>
-                }
-            </div>
-        </div>
 
         @foreach (var group in _session.Logs.GroupBy(l => new { l.ExerciseId, l.ExerciseName }).OrderBy(g => g.Min(l => l.Id)))
         {
@@ -148,6 +151,28 @@ else
         if (_session is null) return;
         _busy = true;
         await SessionSvc.CompleteSessionAsync(_session.Id);
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task SkipSession()
+    {
+        if (_session is null) return;
+        if (!await ConfirmSvc.ConfirmAsync("Skip this session? It will be removed from the queue.", "Skip session")) return;
+        _busy = true;
+        await SessionSvc.SkipSessionAsync(_session.Id);
+        await Reload();
+        _busy = false;
+    }
+
+    private async Task SkipWeek()
+    {
+        if (_session is null) return;
+        if (!await ConfirmSvc.ConfirmAsync(
+            $"Close week {_session.WeekNumber} early? All remaining sessions in week {_session.WeekNumber} will be skipped.",
+            "Close week")) return;
+        _busy = true;
+        await SessionSvc.SkipWeekAsync(_session.MesocycleInstanceId, _session.WeekNumber);
         await Reload();
         _busy = false;
     }

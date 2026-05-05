@@ -15,5 +15,23 @@ public class BackupSettings
 
     /// <summary>Automatically delete backup sets older than this many days. 0 = keep forever.</summary>
     public int RetainDays { get; set; } = 30;
+
+    /// <summary>Optional email settings. If null or From is empty, no email is sent.</summary>
+    public BackupEmailSettings? Email { get; set; }
+}
+
+public class BackupEmailSettings
+{
+    public string SmtpHost { get; set; } = "smtp.gmail.com";
+    public int SmtpPort { get; set; } = 587;
+
+    /// <summary>The Gmail address used to send (and receive) the backup.</summary>
+    public string From { get; set; } = "";
+
+    /// <summary>Gmail App Password (16 chars, no spaces required). NOT your account password.</summary>
+    public string AppPassword { get; set; } = "";
+
+    /// <summary>Destination address. Defaults to From if left empty.</summary>
+    public string To { get; set; } = "";
 }
 

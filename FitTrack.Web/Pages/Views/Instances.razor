@@ -84,7 +84,7 @@
                             {
                                 <table class="table">
                                     <thead>
-                                        <tr><th>Week</th><th>Date</th><th>Workout</th><th>Sets</th><th>Completed</th><th></th></tr>
+                                        <tr><th>Week</th><th>Date</th><th>Workout</th><th>Sets</th><th>Status</th><th></th></tr>
                                     </thead>
                                     <tbody>
                                         @foreach (var s in _sessions)
@@ -97,11 +97,15 @@
                                                 <td>
                                                     @if (s.CompletedAt is not null)
                                                     {
-                                                        <span class="badge ok">Yes</span>
+                                                        <span class="badge ok">Completed</span>
+                                                    }
+                                                    else if (s.IsSkipped)
+                                                    {
+                                                        <span class="badge">Skipped</span>
                                                     }
                                                     else
                                                     {
-                                                        <span class="badge">pending</span>
+                                                        <span class="badge warn">Pending</span>
                                                     }
                                                 </td>
                                                 <td><a class="btn btn-sm btn-ghost" href="/session/@s.Id">View</a></td>

@@ -65,6 +65,7 @@ public record WorkoutSessionDto(
     int WeekNumber,
     DateTimeOffset? StartedAt,
     DateTimeOffset? CompletedAt,
+    bool IsSkipped,
     string? Notes,
     List<ExerciseLogDto> Logs);
 

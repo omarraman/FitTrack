@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.Options;
+﻿using System.Net;
+using System.Net.Mail;
+using Microsoft.Extensions.Options;
 
 namespace FitTrack.Web.BackgroundServices;
 
@@ -79,6 +81,19 @@ public class BackupHostedService : BackgroundService
         var rows = await _backupSvc.ExportToZipAsync(connectionString, zipPath, ct);
         _logger.LogInformation("SQL backup complete. {Rows} total rows → {Path}.", rows, zipPath);
 
+        // Send email if configured.
+        if (_settings.Email is { } emailCfg && !string.IsNullOrWhiteSpace(emailCfg.From))
+        {
+            try
+            {
+                await SendBackupEmailAsync(emailCfg, zipPath, rows, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Backup email could not be sent.");
+            }
+        }
+
         // Record completion time.
         await File.WriteAllTextAsync(stampFile, DateTimeOffset.UtcNow.ToString("O"), ct);
 
@@ -121,6 +136,33 @@ public class BackupHostedService : BackgroundService
                 _logger.LogWarning(ex, "Could not purge old backup: {File}", file);
             }
         }
+    }
+
+    private async Task SendBackupEmailAsync(
+        BackupEmailSettings cfg, string zipPath, int totalRows, CancellationToken ct)
+    {
+        var to = string.IsNullOrWhiteSpace(cfg.To) ? cfg.From : cfg.To;
+        var date = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
+        var fileName = Path.GetFileName(zipPath);
+
+        using var msg = new MailMessage();
+        msg.From = new MailAddress(cfg.From, "FitTrack Backup");
+        msg.To.Add(to);
+        msg.Subject = $"FitTrack Backup {date}";
+        msg.Body =
+            $"Your daily FitTrack backup is attached.\n\n" +
+            $"  Date:       {date}\n" +
+            $"  File:       {fileName}\n" +
+            $"  Total rows: {totalRows:N0}\n\n" +
+            $"Use the numbered .sql files inside the zip to restore, in order.";
+        msg.Attachments.Add(new Attachment(zipPath));
+
+        using var smtp = new SmtpClient(cfg.SmtpHost, cfg.SmtpPort);
+        smtp.EnableSsl = true;
+        smtp.Credentials = new NetworkCredential(cfg.From, cfg.AppPassword);
+
+        await smtp.SendMailAsync(msg, ct);
+        _logger.LogInformation("Backup emailed to {To} ({File})", to, fileName);
     }
 }
 

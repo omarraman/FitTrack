@@ -708,6 +708,9 @@ namespace FitTrack.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("IsSkipped")
+                        .HasColumnType("boolean");
+
                     b.Property<int>("MesocycleInstanceId")
                         .HasColumnType("integer");
 

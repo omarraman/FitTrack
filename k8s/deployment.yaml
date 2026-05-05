@@ -72,4 +72,4 @@ spec:
         - name: backups
           hostPath:
             path: /home/omar-raman/FitTrack/backups
-            type: DirectoryOrCreate
+            type: DirectoryOrCreate 
