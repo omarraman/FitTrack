@@ -92,35 +92,44 @@ public class BackupHostedService : BackgroundService
             _logger.LogError(ex, "pg_dump failed.");
         }
 
-        // ── 2. SQL-INSERT zip (disk — best-effort secondary backup) ───────────────
-        var zipPath = Path.Combine(root, $"fittrack-backup_{tag}.zip");
+        // ── 2. SQL-INSERT zip (disk — only when email is not configured) ────────
         int sqlRows = 0;
         string? sqlZipPath = null;
-        try
+        bool emailConfigured = _settings.Email is { } e && !string.IsNullOrWhiteSpace(e.From);
+
+        if (!emailConfigured)
         {
-            _logger.LogInformation("Starting SQL backup → {Path}", zipPath);
-            sqlRows = await _sqlBackupSvc.ExportToZipAsync(connectionString, zipPath, ct);
-            _logger.LogInformation("SQL backup complete: {Rows} rows → {Path}", sqlRows, zipPath);
-            sqlZipPath = zipPath;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "SQL backup to disk failed (disk may not be writable).");
+            var zipPath = Path.Combine(root, $"fittrack-backup_{tag}.zip");
+            try
+            {
+                _logger.LogInformation("Starting SQL backup → {Path}", zipPath);
+                sqlRows = await _sqlBackupSvc.ExportToZipAsync(connectionString, zipPath, ct);
+                _logger.LogInformation("SQL backup complete: {Rows} rows → {Path}", sqlRows, zipPath);
+                sqlZipPath = zipPath;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "SQL backup to disk failed (disk may not be writable).");
+            }
         }
 
         // ── 3. Email ──────────────────────────────────────────────────────────────
-        if (_settings.Email is { } emailCfg && !string.IsNullOrWhiteSpace(emailCfg.From))
+        if (emailConfigured)
         {
-            if (pgDumpBytes.Length > 0 || sqlZipPath is not null)
+            if (pgDumpBytes.Length > 0)
             {
                 try
                 {
-                    await SendBackupEmailAsync(emailCfg, pgDumpBytes, pgDumpFile, sqlZipPath, sqlRows, ct);
+                    await SendBackupEmailAsync(_settings.Email!, pgDumpBytes, pgDumpFile, null, 0, ct);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Backup email could not be sent.");
                 }
+            }
+            else
+            {
+                _logger.LogWarning("Email is configured but pg_dump produced no output — no email sent.");
             }
         }
 
