@@ -12,6 +12,13 @@ spec:
       labels:
         app: fittrack-web
     spec:
+      initContainers:
+        - name: fix-backup-perms
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:1000 /data/backups && chmod 755 /data/backups"]
+          volumeMounts:
+            - name: backups
+              mountPath: /data/backups
       containers:
         - name: fittrack-web
           image: ghcr.io/omarraman/fittrack-web:ci-latest
