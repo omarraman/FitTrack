@@ -1,21 +1,21 @@
 ﻿using System.Net;
 using System.Net.Mail;
+using System.Text;
 using Microsoft.Extensions.Options;
 
 namespace FitTrack.Web.BackgroundServices;
 
 /// <summary>
-/// Long-running hosted service that wakes up every <see cref="BackupSettings.CheckIntervalMinutes"/>
-/// minutes, checks whether more than <see cref="BackupSettings.BackupIntervalHours"/> hours have
-/// elapsed since the last backup, and if so triggers a full SQL export.
-///
-/// The check itself is negligible (a file-stat + DateTime comparison) so a 1-minute
-/// poll interval is completely fine — the actual export only runs once per 24 hours.
+/// Wakes up every <see cref="BackupSettings.CheckIntervalMinutes"/> minutes and, when the
+/// backup interval has elapsed, runs:
+///   1. pg_dump  — entirely in-memory, attached to an email (no disk permissions needed).
+///   2. SQL-INSERT zip — written to the configured backup directory on disk (best-effort).
 /// </summary>
 public class BackupHostedService : BackgroundService
 {
     private readonly BackupSettings _settings;
-    private readonly SqlBackupService _backupSvc;
+    private readonly SqlBackupService _sqlBackupSvc;
+    private readonly PgDumpBackupService _pgDumpSvc;
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
     private readonly ILogger<BackupHostedService> _logger;
@@ -24,16 +24,18 @@ public class BackupHostedService : BackgroundService
 
     public BackupHostedService(
         IOptions<BackupSettings> settings,
-        SqlBackupService backupSvc,
+        SqlBackupService sqlBackupSvc,
+        PgDumpBackupService pgDumpSvc,
         IConfiguration config,
         IHostEnvironment env,
         ILogger<BackupHostedService> logger)
     {
-        _settings  = settings.Value;
-        _backupSvc = backupSvc;
-        _config    = config;
-        _env       = env;
-        _logger    = logger;
+        _settings     = settings.Value;
+        _sqlBackupSvc = sqlBackupSvc;
+        _pgDumpSvc    = pgDumpSvc;
+        _config       = config;
+        _env          = env;
+        _logger       = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -61,10 +63,12 @@ public class BackupHostedService : BackgroundService
 
     private async Task CheckAndBackupAsync(CancellationToken ct)
     {
-        var root = ResolveBackupRoot();
-        Directory.CreateDirectory(root);
+        // Stamp file: use configured root; fall back to system temp if the directory
+        // isn't writable (e.g. hostPath permission issue in Kubernetes).
+        var root     = ResolveBackupRoot();
+        var stampDir = TryEnsureDirectory(root) ? root : Path.GetTempPath();
+        var stampFile = Path.Combine(stampDir, LastBackupFile);
 
-        var stampFile = Path.Combine(root, LastBackupFile);
         var lastBackup = ReadLastBackupTime(stampFile);
         var threshold  = TimeSpan.FromHours(_settings.BackupIntervalHours);
 
@@ -75,38 +79,69 @@ public class BackupHostedService : BackgroundService
             ?? throw new InvalidOperationException("ConnectionStrings:Postgres is not configured.");
 
         var tag = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd_HH-mm");
+
+        // ── 1. pg_dump (fully in-memory — no disk write permissions required) ─────
+        byte[] pgDumpBytes = [];
+        string pgDumpFile  = string.Empty;
+        try
+        {
+            (pgDumpBytes, pgDumpFile) = await _pgDumpSvc.DumpAsync(connectionString, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "pg_dump failed.");
+        }
+
+        // ── 2. SQL-INSERT zip (disk — best-effort secondary backup) ───────────────
         var zipPath = Path.Combine(root, $"fittrack-backup_{tag}.zip");
+        int sqlRows = 0;
+        string? sqlZipPath = null;
+        try
+        {
+            _logger.LogInformation("Starting SQL backup → {Path}", zipPath);
+            sqlRows = await _sqlBackupSvc.ExportToZipAsync(connectionString, zipPath, ct);
+            _logger.LogInformation("SQL backup complete: {Rows} rows → {Path}", sqlRows, zipPath);
+            sqlZipPath = zipPath;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SQL backup to disk failed (disk may not be writable).");
+        }
 
-        _logger.LogInformation("Starting SQL backup → {Path}", zipPath);
-        var rows = await _backupSvc.ExportToZipAsync(connectionString, zipPath, ct);
-        _logger.LogInformation("SQL backup complete. {Rows} total rows → {Path}.", rows, zipPath);
-
-        // Send email if configured.
+        // ── 3. Email ──────────────────────────────────────────────────────────────
         if (_settings.Email is { } emailCfg && !string.IsNullOrWhiteSpace(emailCfg.From))
         {
-            try
+            if (pgDumpBytes.Length > 0 || sqlZipPath is not null)
             {
-                await SendBackupEmailAsync(emailCfg, zipPath, rows, ct);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Backup email could not be sent.");
+                try
+                {
+                    await SendBackupEmailAsync(emailCfg, pgDumpBytes, pgDumpFile, sqlZipPath, sqlRows, ct);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Backup email could not be sent.");
+                }
             }
         }
 
-        // Record completion time.
-        await File.WriteAllTextAsync(stampFile, DateTimeOffset.UtcNow.ToString("O"), ct);
+        // ── 4. Stamp + purge ──────────────────────────────────────────────────────
+        try { await File.WriteAllTextAsync(stampFile, DateTimeOffset.UtcNow.ToString("O"), ct); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Could not write stamp file {StampFile}.", stampFile); }
 
-        // Purge old backup sets if retention is configured.
-        if (_settings.RetainDays > 0)
+        if (_settings.RetainDays > 0 && TryEnsureDirectory(root))
             PurgeOldBackups(root, _settings.RetainDays);
     }
 
     private string ResolveBackupRoot()
     {
         var dir = _settings.BackupDirectory;
-        if (Path.IsPathRooted(dir)) return dir;
-        return Path.Combine(_env.ContentRootPath, dir);
+        return Path.IsPathRooted(dir) ? dir : Path.Combine(_env.ContentRootPath, dir);
+    }
+
+    private static bool TryEnsureDirectory(string path)
+    {
+        try { Directory.CreateDirectory(path); return true; }
+        catch { return false; }
     }
 
     private static DateTimeOffset ReadLastBackupTime(string stampFile)
@@ -114,8 +149,7 @@ public class BackupHostedService : BackgroundService
         if (!File.Exists(stampFile)) return DateTimeOffset.MinValue;
         var text = File.ReadAllText(stampFile).Trim();
         return DateTimeOffset.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
-            ? dt
-            : DateTimeOffset.MinValue;
+            ? dt : DateTimeOffset.MinValue;
     }
 
     private void PurgeOldBackups(string root, int retainDays)
@@ -131,38 +165,56 @@ public class BackupHostedService : BackgroundService
                     _logger.LogInformation("Purged old backup: {File}", file);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not purge old backup: {File}", file);
-            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not purge: {File}", file); }
         }
     }
 
     private async Task SendBackupEmailAsync(
-        BackupEmailSettings cfg, string zipPath, int totalRows, CancellationToken ct)
+        BackupEmailSettings cfg,
+        byte[] pgDumpBytes, string pgDumpFile,
+        string? sqlZipPath, int sqlRows,
+        CancellationToken ct)
     {
-        var to = string.IsNullOrWhiteSpace(cfg.To) ? cfg.From : cfg.To;
+        var to   = string.IsNullOrWhiteSpace(cfg.To) ? cfg.From : cfg.To;
         var date = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
-        var fileName = Path.GetFileName(zipPath);
 
         using var msg = new MailMessage();
         msg.From = new MailAddress(cfg.From, "FitTrack Backup");
         msg.To.Add(to);
         msg.Subject = $"FitTrack Backup {date}";
-        msg.Body =
-            $"Your daily FitTrack backup is attached.\n\n" +
-            $"  Date:       {date}\n" +
-            $"  File:       {fileName}\n" +
-            $"  Total rows: {totalRows:N0}\n\n" +
-            $"Use the numbered .sql files inside the zip to restore, in order.";
-        msg.Attachments.Add(new Attachment(zipPath));
+
+        var body = new StringBuilder();
+        body.AppendLine("Your daily FitTrack backup is attached.");
+        body.AppendLine();
+        body.AppendLine($"  Date: {date}");
+
+        if (pgDumpBytes.Length > 0)
+        {
+            body.AppendLine($"  pg_dump:  {pgDumpFile}  ({pgDumpBytes.Length / 1024.0:F1} KB gzipped)");
+            body.AppendLine();
+            body.AppendLine("To restore from the pg_dump attachment:");
+            body.AppendLine("  gunzip -c fittrack-pgdump_<date>.sql.gz | psql -U fittrack -d fittrack");
+
+            // Attach directly from memory — no disk write needed.
+            msg.Attachments.Add(new Attachment(new MemoryStream(pgDumpBytes), pgDumpFile, "application/gzip"));
+        }
+
+        if (sqlZipPath is not null)
+        {
+            body.AppendLine();
+            body.AppendLine($"  SQL zip:  {Path.GetFileName(sqlZipPath)}  ({sqlRows:N0} rows)");
+            body.AppendLine("  (Restore by replaying the numbered .sql files inside the zip in order.)");
+            msg.Attachments.Add(new Attachment(sqlZipPath));
+        }
+
+        msg.Body = body.ToString();
 
         using var smtp = new SmtpClient(cfg.SmtpHost, cfg.SmtpPort);
-        smtp.EnableSsl = true;
-        smtp.Credentials = new NetworkCredential(cfg.From, cfg.AppPassword);
+        smtp.EnableSsl    = true;
+        smtp.Credentials  = new NetworkCredential(cfg.From, cfg.AppPassword);
 
         await smtp.SendMailAsync(msg, ct);
-        _logger.LogInformation("Backup emailed to {To} ({File})", to, fileName);
+        _logger.LogInformation("Backup emailed to {To} — pg_dump: {PgFile}, sql: {SqlFile}",
+            to, pgDumpFile, sqlZipPath is null ? "n/a" : Path.GetFileName(sqlZipPath));
     }
 }
-

@@ -66,6 +66,7 @@ builder.Services.AddScoped<FitTrack.Web.Services.ConfirmService>();
 // Scheduled SQL backup
 builder.Services.Configure<BackupSettings>(builder.Configuration.GetSection(BackupSettings.Section));
 builder.Services.AddSingleton<SqlBackupService>();
+builder.Services.AddSingleton<PgDumpBackupService>();
 builder.Services.AddHostedService<BackupHostedService>();
 
 // App layers

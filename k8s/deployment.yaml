@@ -46,6 +46,21 @@ spec:
                   key: AzureAd__Domain
             - name: Backup__BackupDirectory
               value: /data/backups
+            - name: Backup__Email__From
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-backup-secrets
+                  key: Backup__Email__From
+            - name: Backup__Email__AppPassword
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-backup-secrets
+                  key: Backup__Email__AppPassword
+            - name: Backup__Email__To
+              valueFrom:
+                secretKeyRef:
+                  name: fittrack-backup-secrets
+                  key: Backup__Email__To
           readinessProbe:
             httpGet:
               path: /
