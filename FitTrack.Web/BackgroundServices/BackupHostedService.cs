@@ -63,10 +63,12 @@ public class BackupHostedService : BackgroundService
 
     private async Task CheckAndBackupAsync(CancellationToken ct)
     {
-        // Stamp file: use configured root; fall back to system temp if the directory
-        // isn't writable (e.g. hostPath permission issue in Kubernetes).
-        var root     = ResolveBackupRoot();
-        var stampDir = TryEnsureDirectory(root) ? root : Path.GetTempPath();
+        // Stamp file: use temp dir when email is configured (no disk write needed),
+        // otherwise use the backup root directory.
+        var root      = ResolveBackupRoot();
+        bool emailConfigured = _settings.Email is { } ec && !string.IsNullOrWhiteSpace(ec.From);
+        var stampDir  = emailConfigured ? Path.GetTempPath()
+                        : (TryEnsureDirectory(root) ? root : Path.GetTempPath());
         var stampFile = Path.Combine(stampDir, LastBackupFile);
 
         var lastBackup = ReadLastBackupTime(stampFile);
@@ -95,7 +97,6 @@ public class BackupHostedService : BackgroundService
         // ── 2. SQL-INSERT zip (disk — only when email is not configured) ────────
         int sqlRows = 0;
         string? sqlZipPath = null;
-        bool emailConfigured = _settings.Email is { } e && !string.IsNullOrWhiteSpace(e.From);
 
         if (!emailConfigured)
         {
