@@ -6,11 +6,13 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  packages: write  # write = push Docker image to GHCR; also grants read for NuGet restore
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     outputs:
       image_tag: ${{ steps.vars.outputs.image_tag }}
