@@ -2,6 +2,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+# Token for GitHub Packages NuGet source (passed in from CI via --build-arg)
+ARG GITHUB_PACKAGES_TOKEN
+ENV GITHUB_PACKAGES_TOKEN=${GITHUB_PACKAGES_TOKEN}
+
+# Copy nuget.config first so restore can authenticate to GitHub Packages
+COPY nuget.config ./
+
 # Copy solution + project files first so layer cache is reused when only source changes
 COPY FitTrack.sln ./
 COPY FitTrack.Domain/FitTrack.Domain.csproj             FitTrack.Domain/
