@@ -41,6 +41,10 @@
 {
     <div class="card">
         <h3>@(_editingId is null ? "New" : "Edit") mesocycle</h3>
+        @if (_error is not null)
+        {
+            <p style="color: var(--err); margin-bottom: 12px;">@_error</p>
+        }
         <div class="form-row">
             <label>Name</label>
             <input @bind="_editing.Name" style="flex: 1; max-width: 400px;" />
@@ -122,6 +126,7 @@
     private EditModel? _editing;
     private int? _editingId;
     private bool _busy;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
@@ -133,6 +138,7 @@
 
     private void StartNew()
     {
+        _error = null;
         _editingId = null;
         _editing = new EditModel
         {
@@ -147,6 +153,7 @@
 
     private void Edit(MesocycleDto m)
     {
+        _error = null;
         _editingId = m.Id;
         _editing = new EditModel
         {
@@ -219,6 +226,7 @@
     private async Task Save()
     {
         if (_editing is null || string.IsNullOrWhiteSpace(_editing.Name)) return;
+        _error = null;
         _busy = true;
         var dto = new CreateMesocycleDto(
             _editing.Name.Trim(),
@@ -234,18 +242,28 @@
             )).ToList()
         );
 
-        if (_editingId is null)
-            await MesoSvc.CreateAsync(dto);
-        else
-            await MesoSvc.UpdateAsync(_editingId.Value, dto);
+        try
+        {
+            if (_editingId is null)
+                await MesoSvc.CreateAsync(dto);
+            else
+                await MesoSvc.UpdateAsync(_editingId.Value, dto);
 
-        _editing = null;
-        _editingId = null;
-        await Reload();
-        _busy = false;
+            _editing = null;
+            _editingId = null;
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
-    private void Cancel() { _editing = null; _editingId = null; }
+    private void Cancel() { _editing = null; _editingId = null; _error = null; }
 
     private async Task Delete(int id)
     {

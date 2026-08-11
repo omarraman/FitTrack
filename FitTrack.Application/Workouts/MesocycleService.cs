@@ -60,19 +60,7 @@ public class MesocycleService : IMesocycleService
             Description = dto.Description,
             DurationWeeks = dto.DurationWeeks,
             HasRampUpWeek = dto.HasRampUpWeek,
-            Workouts = dto.Workouts.Select(w => new MesocycleWorkout
-            {
-                Name = w.Name,
-                DayOrder = w.DayOrder,
-                PlannedExercises = w.PlannedExercises.Select(p => new PlannedExercise
-                {
-                    ExerciseId = p.ExerciseId,
-                    TargetSets = p.TargetSets,
-                    TargetReps = p.TargetReps,
-                    TargetWeightKg = p.TargetWeightKg,
-                    OrderIndex = p.OrderIndex
-                }).ToList()
-            }).ToList()
+            Workouts = dto.Workouts.Select(CreateWorkout).ToList()
         };
         _db.Mesocycles.Add(m);
         await _db.SaveChangesAsync(ct);
@@ -94,29 +82,88 @@ public class MesocycleService : IMesocycleService
         m.HasRampUpWeek = dto.HasRampUpWeek;
         m.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Replace the template structure wholesale. Simple and robust for a personal app.
-        foreach (var w in m.Workouts.ToList())
+        var hasStartedInstances = await _db.MesocycleInstances
+            .AnyAsync(i => i.MesocycleId == id, ct);
+
+        if (hasStartedInstances)
         {
-            _db.PlannedExercises.RemoveRange(w.PlannedExercises);
-            _db.MesocycleWorkouts.Remove(w);
+            ApplyInPlaceTemplateUpdate(m, dto);
         }
-        m.Workouts = dto.Workouts.Select(w => new MesocycleWorkout
+        else
         {
-            Name = w.Name,
-            DayOrder = w.DayOrder,
-            PlannedExercises = w.PlannedExercises.Select(p => new PlannedExercise
-            {
-                ExerciseId = p.ExerciseId,
-                TargetSets = p.TargetSets,
-                TargetReps = p.TargetReps,
-                TargetWeightKg = p.TargetWeightKg,
-                OrderIndex = p.OrderIndex
-            }).ToList()
-        }).ToList();
+            ReplaceTemplateStructure(m, dto);
+        }
 
         await _db.SaveChangesAsync(ct);
         return true;
     }
+
+    private void ReplaceTemplateStructure(Mesocycle mesocycle, CreateMesocycleDto dto)
+    {
+        foreach (var workout in mesocycle.Workouts.ToList())
+        {
+            _db.PlannedExercises.RemoveRange(workout.PlannedExercises);
+            _db.MesocycleWorkouts.Remove(workout);
+        }
+
+        mesocycle.Workouts = dto.Workouts.Select(CreateWorkout).ToList();
+    }
+
+    private static void ApplyInPlaceTemplateUpdate(Mesocycle mesocycle, CreateMesocycleDto dto)
+    {
+        var existingWorkouts = mesocycle.Workouts
+            .OrderBy(w => w.DayOrder)
+            .ThenBy(w => w.Id)
+            .ToList();
+
+        if (existingWorkouts.Count != dto.Workouts.Count)
+            throw new InvalidOperationException("This mesocycle already has started instances, so you can edit existing workout details but cannot add or remove workout days.");
+
+        for (var workoutIndex = 0; workoutIndex < existingWorkouts.Count; workoutIndex++)
+        {
+            var existingWorkout = existingWorkouts[workoutIndex];
+            var incomingWorkout = dto.Workouts[workoutIndex];
+
+            existingWorkout.Name = incomingWorkout.Name;
+            existingWorkout.DayOrder = incomingWorkout.DayOrder;
+
+            var existingExercises = existingWorkout.PlannedExercises
+                .OrderBy(p => p.OrderIndex)
+                .ThenBy(p => p.Id)
+                .ToList();
+
+            if (existingExercises.Count != incomingWorkout.PlannedExercises.Count)
+                throw new InvalidOperationException("This mesocycle already has started instances, so you can edit existing exercise details but cannot add or remove exercises.");
+
+            for (var exerciseIndex = 0; exerciseIndex < existingExercises.Count; exerciseIndex++)
+            {
+                var existingExercise = existingExercises[exerciseIndex];
+                var incomingExercise = incomingWorkout.PlannedExercises[exerciseIndex];
+
+                existingExercise.ExerciseId = incomingExercise.ExerciseId;
+                existingExercise.TargetSets = incomingExercise.TargetSets;
+                existingExercise.TargetReps = incomingExercise.TargetReps;
+                existingExercise.TargetWeightKg = incomingExercise.TargetWeightKg;
+                existingExercise.OrderIndex = incomingExercise.OrderIndex;
+            }
+        }
+    }
+
+    private static MesocycleWorkout CreateWorkout(CreateMesocycleWorkoutDto dto) => new()
+    {
+        Name = dto.Name,
+        DayOrder = dto.DayOrder,
+        PlannedExercises = dto.PlannedExercises.Select(CreatePlannedExercise).ToList()
+    };
+
+    private static PlannedExercise CreatePlannedExercise(CreatePlannedExerciseDto dto) => new()
+    {
+        ExerciseId = dto.ExerciseId,
+        TargetSets = dto.TargetSets,
+        TargetReps = dto.TargetReps,
+        TargetWeightKg = dto.TargetWeightKg,
+        OrderIndex = dto.OrderIndex
+    };
 
     public async Task<bool> DeleteAsync(int id, CancellationToken ct = default)
     {
