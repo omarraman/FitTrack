@@ -9,6 +9,7 @@ public interface IMesocycleService
     Task<List<MesocycleDto>> ListAsync(CancellationToken ct = default);
     Task<MesocycleDto?> GetAsync(int id, CancellationToken ct = default);
     Task<MesocycleDto> CreateAsync(CreateMesocycleDto dto, CancellationToken ct = default);
+    Task<MesocycleDto?> CopyAsync(int id, CancellationToken ct = default);
     Task<bool> UpdateAsync(int id, CreateMesocycleDto dto, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, CancellationToken ct = default);
 }
@@ -65,6 +66,43 @@ public class MesocycleService : IMesocycleService
         _db.Mesocycles.Add(m);
         await _db.SaveChangesAsync(ct);
         return (await GetAsync(m.Id, ct))!;
+    }
+
+    public async Task<MesocycleDto?> CopyAsync(int id, CancellationToken ct = default)
+    {
+        RequireAdmin();
+
+        var source = await _db.Mesocycles
+            .AsNoTracking()
+            .Include(m => m.Workouts)
+                .ThenInclude(w => w.PlannedExercises)
+            .FirstOrDefaultAsync(m => m.Id == id, ct);
+        if (source is null) return null;
+
+        var copy = new Mesocycle
+        {
+            Name = $"{source.Name} (copy)",
+            Description = source.Description,
+            DurationWeeks = source.DurationWeeks,
+            HasRampUpWeek = source.HasRampUpWeek,
+            Workouts = source.Workouts.Select(w => new MesocycleWorkout
+            {
+                Name = w.Name,
+                DayOrder = w.DayOrder,
+                PlannedExercises = w.PlannedExercises.Select(p => new PlannedExercise
+                {
+                    ExerciseId = p.ExerciseId,
+                    TargetSets = p.TargetSets,
+                    TargetReps = p.TargetReps,
+                    TargetWeightKg = p.TargetWeightKg,
+                    OrderIndex = p.OrderIndex
+                }).ToList()
+            }).ToList()
+        };
+
+        _db.Mesocycles.Add(copy);
+        await _db.SaveChangesAsync(ct);
+        return (await GetAsync(copy.Id, ct))!;
     }
 
     public async Task<bool> UpdateAsync(int id, CreateMesocycleDto dto, CancellationToken ct = default)

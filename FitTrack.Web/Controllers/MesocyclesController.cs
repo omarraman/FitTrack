@@ -24,6 +24,12 @@ public class MesocyclesController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
     }
 
+    [HttpPost("{id:int}/copy")]
+    public async Task<ActionResult<MesocycleDto>> Copy(int id, CancellationToken ct)
+        => (await _svc.CopyAsync(id, ct)) is { } copy
+            ? CreatedAtAction(nameof(Get), new { id = copy.Id }, copy)
+            : NotFound();
+
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, CreateMesocycleDto dto, CancellationToken ct)
         => await _svc.UpdateAsync(id, dto, ct) ? NoContent() : NotFound();

@@ -17,7 +17,7 @@
     else
     {
         <table class="table">
-            <thead><tr><th>Name</th><th>Weeks</th><th>Workouts</th><th>Description</th><th style="width:180px;"></th></tr></thead>
+            <thead><tr><th>Name</th><th>Weeks</th><th>Workouts</th><th>Description</th><th style="width:240px;"></th></tr></thead>
             <tbody>
                 @foreach (var m in _mesocycles)
                 {
@@ -28,6 +28,7 @@
                         <td>@m.Description</td>
                         <td>
                             <button class="btn btn-sm btn-ghost" @onclick="() => Edit(m)">Edit</button>
+                            <button class="btn btn-sm btn-ghost" @onclick="() => Copy(m)">Copy</button>
                             <button class="btn btn-sm btn-danger" @onclick="() => Delete(m.Id)">Delete</button>
                         </td>
                     </tr>
@@ -269,6 +270,12 @@
     {
         if (!await ConfirmSvc.ConfirmAsync("Delete this mesocycle? All associated instances and session history will also be permanently deleted.")) return;
         await MesoSvc.DeleteAsync(id);
+        await Reload();
+    }
+
+    private async Task Copy(MesocycleDto m)
+    {
+        await MesoSvc.CopyAsync(m.Id);
         await Reload();
     }
 
