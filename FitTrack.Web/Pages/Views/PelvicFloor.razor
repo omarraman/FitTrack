@@ -1,0 +1,999 @@
+@page "/pelvic-floor"
+@implements IAsyncDisposable
+@inject IPelvicFloorTrainingService Svc
+@inject ConfirmService ConfirmSvc
+
+<h1>Pelvic-floor training</h1>
+<p class="page-kicker">A structured 10-week practice plan focused on gentle contraction, complete relaxation, and consistency.</p>
+
+<div class="card safety-card">
+    <h3>Safety information</h3>
+    <p class="text-dim">@PelvicFloorProgramDefinition.SafetyNotice</p>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="card"><span class="badge err">Not saved</span> <span>@_error</span></div>
+}
+
+@if (_loading)
+{
+    <div class="card"><span class="text-dim">Loading…</span></div>
+}
+else if (_summary is null)
+{
+    <div class="card">
+        <h3>The ten-week plan</h3>
+        <table class="table">
+            <thead><tr><th>Weeks</th><th>Phase</th><th>Sessions/week</th><th>Main focus</th></tr></thead>
+            <tbody>
+                @foreach (var phase in PelvicFloorProgramDefinition.Phases)
+                {
+                    <tr>
+                        <td>@PhaseWeeks(phase)</td>
+                        <td>@phase.PhaseName</td>
+                        <td>@phase.SessionsPerWeek</td>
+                        <td>@phase.Focus</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <p class="text-dim">
+            Sometimes called Kegel exercises. Every session finishes with slow diaphragmatic breaths, and week 8 is a
+            deliberate deload week.
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Start 10-week program</h3>
+        <div class="form-grid">
+            <div>
+                <label>Start date</label>
+                <input type="date" @bind="_startDate" max="@TodayIso" />
+            </div>
+            <div>
+                <label>General notes (optional)</label>
+                <textarea @bind="_startNotes" maxlength="2000" rows="2"></textarea>
+            </div>
+        </div>
+        <label class="checkbox-row">
+            <input type="checkbox" @bind="_safetyAcknowledged" />
+            <span>I have read the safety information above and will keep the effort gentle and pain-free.</span>
+        </label>
+        <button class="btn" @onclick="StartProgram" disabled="@(!_safetyAcknowledged || _busy)">Start 10-week program</button>
+    </div>
+}
+else if (_summary.Status != PelvicFloorProgramStatus.Active)
+{
+    <div class="card">
+        <div class="card-row">
+            <h3>Previous program</h3>
+            <span class="badge @(_summary.Status == PelvicFloorProgramStatus.Completed ? "ok" : "warn")">@_summary.Status</span>
+        </div>
+        <div class="grid">
+            <div class="metric"><div class="label">Started</div><div class="value">@_summary.StartDate.ToString("yyyy-MM-dd")</div></div>
+            <div class="metric">
+                <div class="label">@(_summary.Status == PelvicFloorProgramStatus.Completed ? "Completed" : "Cancelled")</div>
+                <div class="value">@EndDateText()</div>
+            </div>
+            <div class="metric"><div class="label">Sessions completed</div><div class="value">@_summary.CompletedSessionCount</div></div>
+            <div class="metric"><div class="label">Scheduled target</div><div class="value">@_summary.ExpectedSessionCountThroughToday</div></div>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(_summary.Notes))
+        {
+            <p class="text-dim">@_summary.Notes</p>
+        }
+        @if (!_restarting)
+        {
+            <div class="pelvic-status-row">
+                <button class="btn" @onclick="BeginRestart" disabled="@_busy">Start a new 10-week program</button>
+            </div>
+        }
+    </div>
+
+    @if (_restarting)
+    {
+        <div class="card">
+            <h3>Start a new 10-week program</h3>
+            <div class="form-grid">
+                <div>
+                    <label>Start date</label>
+                    <input type="date" @bind="_startDate" max="@TodayIso" />
+                </div>
+                <div>
+                    <label>General notes (optional)</label>
+                    <textarea @bind="_startNotes" maxlength="2000" rows="2"></textarea>
+                </div>
+            </div>
+            <label class="checkbox-row">
+                <input type="checkbox" @bind="_safetyAcknowledged" />
+                <span>I have read the safety information above and will keep the effort gentle and pain-free.</span>
+            </label>
+            <div class="pelvic-status-row">
+                <button class="btn" @onclick="StartProgram" disabled="@(!_safetyAcknowledged || _busy)">Start 10-week program</button>
+                <button class="btn btn-ghost" @onclick="CancelRestart" disabled="@_busy">Never mind</button>
+            </div>
+        </div>
+    }
+}
+else
+{
+    <div class="card">
+        <div class="card-row">
+            <h3>Week @_summary.CurrentWeekNumber of @PelvicFloorProgramDefinition.TotalWeeks · @_summary.CurrentPrescription.PhaseName</h3>
+            @if (_summary.CurrentPrescription.IsDeloadWeek)
+            {
+                <span class="badge warn">Deload week</span>
+            }
+        </div>
+        <div class="grid">
+            <div class="metric">
+                <div class="label">Sessions completed / expected</div>
+                <div class="value">@_summary.CompletedSessionCount / @_summary.ExpectedSessionCountThroughToday</div>
+            </div>
+            <div class="metric">
+                <div class="label">Scheduled done this week</div>
+                <div class="value">@ScheduledCompletedThisWeek() / @_summary.CurrentPrescription.SessionsPerWeek</div>
+            </div>
+            <div class="metric">
+                <div class="label">Next scheduled session</div>
+                <div class="value">@(_summary.NextScheduledSessionDate?.ToString("yyyy-MM-dd") ?? "—")</div>
+            </div>
+            @if (_summary.LatestEffortRating is int effort)
+            {
+                <div class="metric"><div class="label">Latest effort</div><div class="value">@effort / 5</div></div>
+            }
+            @if (_summary.LatestRelaxationRating is int relaxation)
+            {
+                <div class="metric"><div class="label">Latest relaxation</div><div class="value">@relaxation / 5</div></div>
+            }
+            @if (_summary.LatestPelvicTensionRating is int tension)
+            {
+                <div class="metric"><div class="label">Latest pelvic tension</div><div class="value">@tension / 5</div></div>
+            }
+        </div>
+        @if (_summary.NextScheduledSessionDate is null)
+        {
+            <p class="text-dim">No remaining scheduled session this week.</p>
+        }
+        <div class="pelvic-status-row">
+            <button class="btn btn-ghost" @onclick="CancelProgram" disabled="@_busy">Cancel program</button>
+            @if (CanComplete())
+            {
+                <button class="btn btn-ok" @onclick="CompleteProgram" disabled="@_busy">Complete program</button>
+            }
+        </div>
+    </div>
+
+    @if (_summary.HasRecentSafetyFlag)
+    {
+        <div class="card safety-card">
+            <div class="card-row">
+                <h3>Recent safety flag</h3>
+                <span class="badge err">Take this seriously</span>
+            </div>
+            <p class="text-dim">
+                In the last 14 days you recorded pain or urinary symptoms, or a session you did not complete. Stop
+                strengthening work and seek advice from a clinician or pelvic-health physiotherapist if symptoms persist
+                or concern you. You can still log sessions and check-ins below.
+            </p>
+        </div>
+    }
+
+    <div class="card">
+        <div class="card-row">
+            <h3>Today's practice</h3>
+            @if (TodaysSession() is not null)
+            {
+                <span class="badge ok">Logged today</span>
+            }
+            else if (IsTodayScheduled())
+            {
+                <span class="badge">Scheduled today</span>
+            }
+            else
+            {
+                <span class="badge warn">Optional practice today</span>
+            }
+        </div>
+
+        @if (TodaysSession() is PelvicFloorSessionLogDto todaysLog)
+        {
+            <p>@OutcomeLabel(todaysLog.Outcome) — @DescribeWork(todaysLog)</p>
+            <p class="text-dim">Only one session per calendar day is recorded. Delete today's entry below if you need to change it.</p>
+        }
+        else
+        {
+            @if (!IsTodayScheduled())
+            {
+                <p class="text-dim">Today is not a scheduled day. Optional practice is fine, but it does not count toward the weekly schedule target.</p>
+            }
+            <p>@PrescriptionSentence(_summary.CurrentPrescription)</p>
+            <ul class="pelvic-cues">
+                @foreach (var cue in PelvicFloorProgramDefinition.TechniqueCues)
+                {
+                    <li>@cue</li>
+                }
+            </ul>
+            @if (!_guidedOpen)
+            {
+                <div class="pelvic-status-row">
+                    <button class="btn" @onclick="BeginGuidedSession" disabled="@_busy">Begin guided session</button>
+                </div>
+            }
+        }
+    </div>
+
+    @if (_guidedOpen && !_showLogForm)
+    {
+        <div class="card">
+            <div class="card-row">
+                <h3>Guided session</h3>
+                <span class="badge">@CurrentStep().Phase</span>
+            </div>
+            <div class="pelvic-timer">
+                <div class="pelvic-timer-time">@FormatTime(_remainingSeconds)</div>
+                <div class="pelvic-timer-label">@CurrentStep().Position</div>
+                <div class="pelvic-progress"><div style="width:@ProgressPercent()%"></div></div>
+            </div>
+            <p class="text-dim">@CurrentStep().Instruction</p>
+
+            @if (CurrentStep().Kind == StepKind.Breathing)
+            {
+                <label class="checkbox-row">
+                    <input type="checkbox" @bind="_breathingAcknowledged" />
+                    <span>I completed @_summary.CurrentPrescription.BreathingBreaths slow, relaxed breaths</span>
+                </label>
+                <div class="timer-actions">
+                    <button class="btn btn-ok" @onclick="OpenCompletedLogForm" disabled="@(!_breathingAcknowledged)">Finish and log session</button>
+                    <button class="btn btn-warn" @onclick="StopEarly">Stop early</button>
+                </div>
+            }
+            else
+            {
+                <div class="timer-actions">
+                    @if (_running)
+                    {
+                        <button class="btn btn-ghost" @onclick="PauseTimer">Pause</button>
+                    }
+                    else
+                    {
+                        <button class="btn" @onclick="StartTimerAsync">@(_started ? "Resume" : "Start")</button>
+                    }
+                    <button class="btn btn-ghost" @onclick="SkipInterval">Skip current interval</button>
+                    <button class="btn btn-warn" @onclick="StopEarly">Stop early</button>
+                </div>
+            }
+        </div>
+    }
+
+    @if (_showLogForm)
+    {
+        <div class="card">
+            <h3>@(_stopEarly ? "Record the session you stopped" : "Log completed session")</h3>
+            <p class="text-dim">
+                You can reduce these values, but a completed session cannot record more than this week prescribes.
+            </p>
+            <div class="form-grid">
+                <div>
+                    <label>Sustained sets (max @_summary.CurrentPrescription.SustainedSets)</label>
+                    <input type="number" min="0" @bind="_logSets" />
+                </div>
+                <div>
+                    <label>Reps per set (max @_summary.CurrentPrescription.SustainedRepsPerSet)</label>
+                    <input type="number" min="0" @bind="_logReps" />
+                </div>
+                <div>
+                    <label>Hold seconds (max @_summary.CurrentPrescription.HoldSeconds)</label>
+                    <input type="number" min="0" @bind="_logHold" />
+                </div>
+                <div>
+                    <label>Release seconds (max @_summary.CurrentPrescription.RestSeconds)</label>
+                    <input type="number" min="0" @bind="_logRest" />
+                </div>
+                <div>
+                    <label>Quick reps (max @_summary.CurrentPrescription.TotalQuickReps)</label>
+                    <input type="number" min="0" @bind="_logQuick" />
+                </div>
+                <div>
+                    <label>Effort (1 very easy – 5 too hard)</label>
+                    <select @bind="_logEffort">
+                        <option value="">—</option>
+                        @for (var i = 1; i <= 5; i++)
+                        {
+                            <option value="@i">@i – @EffortLabel(i)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>Relaxation (1 unable to relax – 5 fully relaxed)</label>
+                    <select @bind="_logRelax">
+                        <option value="">—</option>
+                        @for (var i = 1; i <= 5; i++)
+                        {
+                            <option value="@i">@i – @RelaxationLabel(i)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label>Notes (optional)</label>
+                    <textarea @bind="_logNotes" maxlength="1000" rows="2"></textarea>
+                </div>
+            </div>
+
+            @if (_stopEarly)
+            {
+                <label class="checkbox-row">
+                    <input type="checkbox" @bind="_stoppedForSymptoms" />
+                    <span>I am stopping because of pain or urinary symptoms</span>
+                </label>
+            }
+
+            <div class="timer-actions">
+                <button class="btn" @onclick="SaveSession" disabled="@_busy">Save session</button>
+                <button class="btn btn-ghost" @onclick="CloseGuided" disabled="@_busy">Discard</button>
+            </div>
+        </div>
+    }
+
+    <div class="card">
+        <h3>Daily check-in</h3>
+        <div class="form-grid">
+            <div>
+                <label>Date</label>
+                <input type="date" @bind="_checkInDate" @bind:after="PrefillCheckIn" min="@StartIso" max="@TodayIso" />
+            </div>
+            <div>
+                <label>Pelvic tension (optional)</label>
+                <select @bind="_checkInTension">
+                    <option value="">—</option>
+                    @for (var i = 1; i <= 5; i++)
+                    {
+                        <option value="@i">@i – @TensionLabel(i)</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label>Notes (optional)</label>
+                <textarea @bind="_checkInNotes" maxlength="1000" rows="2"></textarea>
+            </div>
+        </div>
+        <label class="checkbox-row">
+            <input type="checkbox" @bind="_checkInSymptoms" />
+            <span>I had pain, urinary symptoms, or uncomfortable persistent pelvic tightness today.</span>
+        </label>
+        <button class="btn" @onclick="SaveCheckIn" disabled="@_busy">@(ExistingCheckIn() is null ? "Save check-in" : "Update check-in")</button>
+    </div>
+}
+
+@if (_summary is not null)
+{
+    <div class="card">
+        <h3>Recent sessions</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th><th>Week</th><th>Day</th><th>Outcome</th><th>Completed work</th>
+                    <th>Effort</th><th>Relaxation</th><th>Notes</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var s in _summary.RecentSessions)
+                {
+                    <tr>
+                        <td>@s.SessionDate.ToString("yyyy-MM-dd")</td>
+                        <td>@s.WeekNumber</td>
+                        <td>@(s.IsOptional ? "Optional" : "Scheduled")</td>
+                        <td><span class="badge @OutcomeBadge(s.Outcome)">@OutcomeLabel(s.Outcome)</span></td>
+                        <td>@DescribeWork(s)</td>
+                        <td>@(s.EffortRating?.ToString() ?? "—")</td>
+                        <td>@(s.RelaxationRating?.ToString() ?? "—")</td>
+                        <td>@s.Notes</td>
+                        <td><button class="btn btn-sm btn-danger" @onclick="() => DeleteSession(s.Id)">Delete</button></td>
+                    </tr>
+                }
+                @if (_summary.RecentSessions.Count == 0)
+                {
+                    <tr><td colspan="9" class="text-dim">No sessions logged yet.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>Recent check-ins</h3>
+        <table class="table">
+            <thead><tr><th>Date</th><th>Pelvic tension</th><th>Safety flag</th><th>Notes</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in _summary.RecentCheckIns)
+                {
+                    <tr>
+                        <td>@c.CheckInDate.ToString("yyyy-MM-dd")</td>
+                        <td>@TensionText(c.PelvicTensionRating)</td>
+                        <td>
+                            @if (c.HasPainOrUrinarySymptoms)
+                            {
+                                <span class="badge err">Symptoms</span>
+                            }
+                            else
+                            {
+                                <span class="text-dim">None</span>
+                            }
+                        </td>
+                        <td>@c.Notes</td>
+                        <td><button class="btn btn-sm btn-danger" @onclick="() => DeleteCheckIn(c.Id)">Delete</button></td>
+                    </tr>
+                }
+                @if (_summary.RecentCheckIns.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-dim">No check-ins yet.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private PelvicFloorProgramSummaryDto? _summary;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+
+    // Start / restart form
+    private DateTime _startDate = DateTime.Today;
+    private string? _startNotes;
+    private bool _safetyAcknowledged;
+    private bool _restarting;
+
+    // Daily check-in form
+    private DateTime _checkInDate = DateTime.Today;
+    private int? _checkInTension;
+    private bool _checkInSymptoms;
+    private string? _checkInNotes;
+
+    // Guided session state
+    private bool _guidedOpen;
+    private bool _showLogForm;
+    private bool _stopEarly;
+    private bool _stoppedForSymptoms;
+    private bool _breathingAcknowledged;
+    private bool _running;
+    private bool _started;
+
+    private List<TimerStep> _steps = new();
+    private int _stepIndex;
+    private int _remainingSeconds;
+    private CancellationTokenSource? _timerCts;
+    private Task? _timerTask;
+
+    // Work actually performed during the guided run
+    private int _setsDone;
+    private int _repsInCurrentSet;
+    private int _quickRepsDone;
+
+    // Session log form
+    private int _logSets;
+    private int _logReps;
+    private int _logHold;
+    private int _logRest;
+    private int _logQuick;
+    private int? _logEffort;
+    private int? _logRelax;
+    private string? _logNotes;
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow);
+    private string TodayIso => Today.ToString("yyyy-MM-dd");
+    private string StartIso => (_summary?.StartDate ?? Today).ToString("yyyy-MM-dd");
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _loading = true;
+        _summary = await Svc.GetActiveOrMostRecentAsync();
+        _loading = false;
+        if (_summary is not null && _summary.Status == PelvicFloorProgramStatus.Active)
+        {
+            _checkInDate = Today.ToDateTime(TimeOnly.MinValue);
+            PrefillCheckIn();
+        }
+    }
+
+    // ---------- Program lifecycle ----------
+
+    private void BeginRestart()
+    {
+        _restarting = true;
+        _startDate = DateTime.Today;
+        _startNotes = null;
+        _safetyAcknowledged = false;
+    }
+
+    private void CancelRestart()
+    {
+        _restarting = false;
+        _safetyAcknowledged = false;
+    }
+
+    private async Task StartProgram()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Svc.StartAsync(new StartPelvicFloorProgramDto(DateOnly.FromDateTime(_startDate), _startNotes));
+            _restarting = false;
+            _safetyAcknowledged = false;
+            _startNotes = null;
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private bool CanComplete()
+        => _summary is not null
+           && _summary.Status == PelvicFloorProgramStatus.Active
+           && Today >= _summary.StartDate.AddDays(PelvicFloorProgramDefinition.CompletionDayOffset);
+
+    private async Task CompleteProgram()
+    {
+        if (_summary is null) return;
+        if (!await ConfirmSvc.ConfirmAsync(
+            "Mark this 10-week pelvic-floor program as completed? Your sessions and check-ins are kept.",
+            "Complete")) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Svc.CompleteAsync(_summary.Id, Today);
+            await StopTimerLoopAsync();
+            CloseGuided();
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CancelProgram()
+    {
+        if (_summary is null) return;
+        if (!await ConfirmSvc.ConfirmAsync(
+            "Cancel this pelvic-floor program? Your session and check-in history is retained and you can start a new program later.",
+            "Cancel program")) return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Svc.CancelAsync(_summary.Id, Today);
+            await StopTimerLoopAsync();
+            CloseGuided();
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    // ---------- Dashboard helpers ----------
+
+    private string EndDateText()
+        => (_summary?.CompletedOn ?? _summary?.CancelledOn)?.ToString("yyyy-MM-dd") ?? "—";
+
+    private bool IsTodayScheduled()
+        => _summary is not null && PelvicFloorProgramDefinition.IsScheduledDate(_summary.StartDate, Today);
+
+    private PelvicFloorSessionLogDto? TodaysSession()
+        => _summary?.RecentSessions.FirstOrDefault(s => s.SessionDate == Today);
+
+    private int ScheduledCompletedThisWeek() => _summary is null
+        ? 0
+        : _summary.RecentSessions.Count(s => s.WeekNumber == _summary.CurrentWeekNumber
+                                             && !s.IsOptional
+                                             && s.Outcome == PelvicFloorSessionOutcome.Completed);
+
+    private static string PhaseWeeks(PelvicFloorPhaseDto phase)
+        => phase.StartWeek == phase.EndWeek ? phase.StartWeek.ToString() : $"{phase.StartWeek}–{phase.EndWeek}";
+
+    private static string OutcomeLabel(PelvicFloorSessionOutcome outcome) => outcome switch
+    {
+        PelvicFloorSessionOutcome.Completed => "Completed",
+        PelvicFloorSessionOutcome.StoppedEarly => "Stopped early",
+        _ => "Stopped for symptoms"
+    };
+
+    private static string OutcomeBadge(PelvicFloorSessionOutcome outcome) => outcome switch
+    {
+        PelvicFloorSessionOutcome.Completed => "ok",
+        PelvicFloorSessionOutcome.StoppedEarly => "warn",
+        _ => "err"
+    };
+
+    private static string DescribeWork(PelvicFloorSessionLogDto s)
+    {
+        var text = $"{s.CompletedSustainedSets} × {s.CompletedSustainedRepsPerSet} holds of {s.CompletedHoldSeconds} sec";
+        if (s.CompletedQuickReps > 0) text += $", {s.CompletedQuickReps} quick reps";
+        return text;
+    }
+
+    private static string PrescriptionSentence(PelvicFloorPrescriptionDto p)
+    {
+        var text = $"{p.SustainedSets} sets of {p.SustainedRepsPerSet} gentle holds: hold {p.HoldSeconds} sec, "
+                 + $"release {p.RestSeconds} sec; rest {p.RestBetweenSetsSeconds} sec between sets.";
+        if (p.HasQuickContractions)
+            text += $" Then {p.TotalQuickReps} quick contractions: squeeze {p.QuickHoldSeconds} sec, release {p.QuickRestSeconds} sec.";
+        return text + $" Finish with {p.BreathingBreaths} slow breaths.";
+    }
+
+    private static string EffortLabel(int v) => v switch
+    {
+        1 => "very easy",
+        2 => "easy",
+        3 => "moderate",
+        4 => "hard",
+        _ => "too hard / strained"
+    };
+
+    private static string RelaxationLabel(int v) => v switch
+    {
+        1 => "unable to relax fully",
+        2 => "mostly tense",
+        3 => "mixed",
+        4 => "mostly relaxed",
+        _ => "fully relaxed"
+    };
+
+    private static string TensionLabel(int v) => v switch
+    {
+        1 => "very relaxed",
+        2 => "relaxed",
+        3 => "moderate tension",
+        4 => "tight",
+        _ => "very tight"
+    };
+
+    private static string TensionText(int? rating)
+        => rating is int v ? $"{v} – {TensionLabel(v)}" : "—";
+
+    // ---------- Guided session ----------
+
+    private enum StepKind { Prepare, Contract, Release, RestBetweenSets, QuickContract, QuickRelease, Breathing }
+
+    private sealed record TimerStep(string Phase, int Seconds, string Position, string Instruction, StepKind Kind);
+
+    private static readonly TimerStep CompleteStep =
+        new("Complete", 0, "Session finished", "Nice work. Log the session below.", StepKind.Breathing);
+
+    private TimerStep CurrentStep()
+        => _stepIndex >= 0 && _stepIndex < _steps.Count ? _steps[_stepIndex] : CompleteStep;
+
+    private void BeginGuidedSession()
+    {
+        if (_summary is null) return;
+        _steps = BuildSteps(_summary.CurrentPrescription);
+        _stepIndex = 0;
+        _remainingSeconds = _steps[0].Seconds;
+        _setsDone = 0;
+        _repsInCurrentSet = 0;
+        _quickRepsDone = 0;
+        _running = false;
+        _started = false;
+        _breathingAcknowledged = false;
+        _stopEarly = false;
+        _stoppedForSymptoms = false;
+        _showLogForm = false;
+        _guidedOpen = true;
+        _error = null;
+    }
+
+    private static List<TimerStep> BuildSteps(PelvicFloorPrescriptionDto p)
+    {
+        var steps = new List<TimerStep>
+        {
+            new("Prepare", 10, "Getting ready",
+                "Sit or lie comfortably. Breathe normally and keep the abdomen, buttocks, thighs, jaw, and shoulders relaxed.",
+                StepKind.Prepare)
+        };
+
+        for (var set = 1; set <= p.SustainedSets; set++)
+        {
+            for (var rep = 1; rep <= p.SustainedRepsPerSet; rep++)
+            {
+                var position = $"Set {set} of {p.SustainedSets} · Rep {rep} of {p.SustainedRepsPerSet}";
+                steps.Add(new("Contract", p.HoldSeconds, position,
+                    "Gentle inward-and-upward lift. Do not strain, and keep breathing.", StepKind.Contract));
+                steps.Add(new("Release", p.RestSeconds, position,
+                    "Let go completely. The release is part of every repetition.", StepKind.Release));
+            }
+
+            if (set < p.SustainedSets)
+            {
+                steps.Add(new("Rest between sets", p.RestBetweenSetsSeconds,
+                    $"After set {set} of {p.SustainedSets}", "Rest fully and breathe normally.", StepKind.RestBetweenSets));
+            }
+        }
+
+        if (p.HasQuickContractions)
+        {
+            if (p.SustainedSets > 0)
+            {
+                steps.Add(new("Rest between sets", p.RestBetweenSetsSeconds, "Before the quick contractions",
+                    "Rest fully before the quick contractions.", StepKind.RestBetweenSets));
+            }
+
+            for (var set = 1; set <= p.QuickSets; set++)
+            {
+                for (var rep = 1; rep <= p.QuickReps; rep++)
+                {
+                    var position = $"Quick set {set} of {p.QuickSets} · Rep {rep} of {p.QuickReps}";
+                    steps.Add(new("Quick contraction", p.QuickHoldSeconds, position,
+                        "Short, crisp squeeze.", StepKind.QuickContract));
+                    steps.Add(new("Quick release", p.QuickRestSeconds, position,
+                        "Full, quick release.", StepKind.QuickRelease));
+                }
+
+                if (set < p.QuickSets)
+                {
+                    steps.Add(new("Rest between sets", p.RestBetweenSetsSeconds,
+                        $"After quick set {set} of {p.QuickSets}", "Rest fully and breathe normally.", StepKind.RestBetweenSets));
+                }
+            }
+        }
+
+        steps.Add(new("Finish with breathing", 0, "Finishing",
+            $"Take {p.BreathingBreaths} slow diaphragmatic breaths, then confirm below.", StepKind.Breathing));
+
+        return steps;
+    }
+
+    private async Task StartTimerAsync()
+    {
+        _started = true;
+        _running = true;
+        if (_timerTask is { IsCompleted: false }) return;
+
+        await StopTimerLoopAsync();
+        _timerCts = new CancellationTokenSource();
+        _timerTask = RunTimerAsync(_timerCts.Token);
+    }
+
+    private void PauseTimer() => _running = false;
+
+    private async Task RunTimerAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                if (!_running) continue;
+
+                if (_remainingSeconds > 0) _remainingSeconds--;
+                if (_remainingSeconds <= 0) Advance(countAsWork: true);
+
+                if (CurrentStep().Kind == StepKind.Breathing) _running = false;
+
+                await InvokeAsync(StateHasChanged);
+
+                if (!_running) break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Timer cancelled on navigation, disposal, or restart.
+        }
+    }
+
+    private void Advance(bool countAsWork)
+    {
+        if (_steps.Count == 0) return;
+
+        if (countAsWork)
+        {
+            var finished = _steps[_stepIndex];
+            if (finished.Kind == StepKind.Release)
+            {
+                _repsInCurrentSet++;
+                var prescribedReps = _summary?.CurrentPrescription.SustainedRepsPerSet ?? 0;
+                if (prescribedReps > 0 && _repsInCurrentSet >= prescribedReps)
+                {
+                    _setsDone++;
+                    _repsInCurrentSet = 0;
+                }
+            }
+            else if (finished.Kind == StepKind.QuickRelease)
+            {
+                _quickRepsDone++;
+            }
+        }
+
+        if (_stepIndex < _steps.Count - 1) _stepIndex++;
+        _remainingSeconds = _steps[_stepIndex].Seconds;
+    }
+
+    private void SkipInterval()
+    {
+        Advance(countAsWork: false);
+        if (CurrentStep().Kind == StepKind.Breathing) _running = false;
+    }
+
+    private int ProgressPercent()
+    {
+        var step = CurrentStep();
+        if (step.Seconds <= 0) return 100;
+        var elapsed = step.Seconds - _remainingSeconds;
+        return Math.Clamp((int)Math.Round(elapsed * 100.0 / step.Seconds), 0, 100);
+    }
+
+    private static string FormatTime(int seconds)
+        => seconds <= 0 ? "0:00" : $"{seconds / 60}:{seconds % 60:00}";
+
+    private async Task OpenCompletedLogForm()
+    {
+        await StopTimerLoopAsync();
+        _running = false;
+
+        var p = _summary!.CurrentPrescription;
+        _stopEarly = false;
+        _stoppedForSymptoms = false;
+        _logSets = p.SustainedSets;
+        _logReps = p.SustainedRepsPerSet;
+        _logHold = p.HoldSeconds;
+        _logRest = p.RestSeconds;
+        _logQuick = p.TotalQuickReps;
+        _logEffort = null;
+        _logRelax = null;
+        _logNotes = null;
+        _showLogForm = true;
+    }
+
+    private async Task StopEarly()
+    {
+        await StopTimerLoopAsync();
+        _running = false;
+
+        var p = _summary!.CurrentPrescription;
+        _stopEarly = true;
+        _stoppedForSymptoms = false;
+        _logSets = _setsDone + (_repsInCurrentSet > 0 ? 1 : 0);
+        _logReps = _repsInCurrentSet > 0 ? _repsInCurrentSet : (_setsDone > 0 ? p.SustainedRepsPerSet : 0);
+        _logHold = _logSets > 0 ? p.HoldSeconds : 0;
+        _logRest = _logSets > 0 ? p.RestSeconds : 0;
+        _logQuick = _quickRepsDone;
+        _logEffort = null;
+        _logRelax = null;
+        _logNotes = null;
+        _showLogForm = true;
+    }
+
+    private async Task SaveSession()
+    {
+        if (_summary is null) return;
+
+        var outcome = _stopEarly
+            ? (_stoppedForSymptoms ? PelvicFloorSessionOutcome.SkippedForSymptoms : PelvicFloorSessionOutcome.StoppedEarly)
+            : PelvicFloorSessionOutcome.Completed;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Svc.LogSessionAsync(_summary.Id, new LogPelvicFloorSessionDto(
+                Today,
+                outcome,
+                _logSets,
+                _logReps,
+                _logHold,
+                _logRest,
+                _logQuick,
+                !_stopEarly && _breathingAcknowledged,
+                _logEffort,
+                _logRelax,
+                _logNotes));
+
+            if (outcome == PelvicFloorSessionOutcome.SkippedForSymptoms)
+            {
+                var existing = _summary.RecentCheckIns.FirstOrDefault(c => c.CheckInDate == Today);
+                await Svc.UpsertCheckInAsync(_summary.Id, new UpsertPelvicFloorCheckInDto(
+                    Today, existing?.PelvicTensionRating, true, existing?.Notes));
+            }
+
+            CloseGuided();
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void CloseGuided()
+    {
+        _guidedOpen = false;
+        _showLogForm = false;
+        _stopEarly = false;
+        _stoppedForSymptoms = false;
+        _running = false;
+        _started = false;
+        _breathingAcknowledged = false;
+        _steps = new();
+        _stepIndex = 0;
+        _remainingSeconds = 0;
+    }
+
+    private async Task StopTimerLoopAsync()
+    {
+        var cts = _timerCts;
+        var task = _timerTask;
+        _timerCts = null;
+        _timerTask = null;
+        if (cts is null) return;
+
+        cts.Cancel();
+        if (task is not null)
+        {
+            try { await task; }
+            catch (OperationCanceledException) { }
+        }
+        cts.Dispose();
+    }
+
+    // ---------- Daily check-in ----------
+
+    private PelvicFloorDailyCheckInDto? ExistingCheckIn()
+        => _summary?.RecentCheckIns.FirstOrDefault(c => c.CheckInDate == DateOnly.FromDateTime(_checkInDate));
+
+    private void PrefillCheckIn()
+    {
+        var existing = ExistingCheckIn();
+        _checkInTension = existing?.PelvicTensionRating;
+        _checkInSymptoms = existing?.HasPainOrUrinarySymptoms ?? false;
+        _checkInNotes = existing?.Notes;
+    }
+
+    private async Task SaveCheckIn()
+    {
+        if (_summary is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            await Svc.UpsertCheckInAsync(_summary.Id, new UpsertPelvicFloorCheckInDto(
+                DateOnly.FromDateTime(_checkInDate), _checkInTension, _checkInSymptoms, _checkInNotes));
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    // ---------- History ----------
+
+    private async Task DeleteSession(int sessionId)
+    {
+        if (_summary is null) return;
+        if (!await ConfirmSvc.ConfirmAsync("Delete this pelvic-floor session? Adherence totals are recalculated.")) return;
+
+        _error = null;
+        try
+        {
+            await Svc.DeleteSessionAsync(_summary.Id, sessionId);
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task DeleteCheckIn(int checkInId)
+    {
+        if (_summary is null) return;
+        if (!await ConfirmSvc.ConfirmAsync("Delete this daily check-in?")) return;
+
+        _error = null;
+        try
+        {
+            await Svc.DeleteCheckInAsync(_summary.Id, checkInId);
+            await Reload();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    public async ValueTask DisposeAsync() => await StopTimerLoopAsync();
+}
