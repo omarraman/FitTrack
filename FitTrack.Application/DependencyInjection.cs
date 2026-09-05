@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<IBloodPressureService, BloodPressureService>();
         services.AddScoped<IColdEpisodeService, ColdEpisodeService>();
         services.AddScoped<ICardioSessionService, CardioSessionService>();
+        services.AddScoped<IPelvicFloorTrainingService, PelvicFloorTrainingService>();
 
         services.AddScoped<IFoodService, FoodService>();
         services.AddScoped<IRecipeService, RecipeService>();

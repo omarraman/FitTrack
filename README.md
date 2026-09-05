@@ -15,6 +15,7 @@ Personal workout + health tracker built with **ASP.NET Core 8**, **Blazor Server
 - **Bodyweight** log with optional body fat %, muscle % and muscle kg. Includes a simple SVG trend line.
 - **Blood pressure** log with systolic / diastolic / pulse and AHA category badges.
 - **Cold tracker** — episodes with severity (1–5), symptoms, dates; yearly stats.
+- **Pelvic-floor training** *(private to the signed-in user)* — a fixed 10-week plan (`/pelvic-floor`) with a guided, JavaScript-free session timer, daily check-ins, adherence tracking and a week-8 deload. It is a self-management tracker and educational tool, not a diagnostic or treatment tool.
 
 ### Nutrition
 - **Foods** *(shared library, admin-only writes)* — per-100g macros (kcal, protein, carbs, fat, fiber).
@@ -29,7 +30,7 @@ FitTrack uses **OpenID Connect** with **Microsoft.Identity.Web** against *your* 
 - On first sign-in, an `AppUser` row is auto-provisioned from the token's `oid` / `sub` claim (`ExternalId`), plus email (`preferred_username`) and display name (`name`).
 - **The very first user to sign in is automatically promoted to admin** (`IsAdmin = true`). Subsequent users are regular users.
 - **Admins** can create / edit / delete the shared library (Exercises, Mesocycle templates, Foods, Recipes). Regular users can read those but not modify them.
-- **All users** own their own per-user data (instances, workout sessions, exercise logs, bodyweight, blood pressure, colds, meal entries) and cannot see or touch other users' rows.
+- **All users** own their own per-user data (instances, workout sessions, exercise logs, bodyweight, blood pressure, colds, pelvic-floor programs, meal entries) and cannot see or touch other users' rows.
 
 There is no role claim needed — admin-ness lives as a DB flag on `AppUser`. If you want to promote another user to admin later, just `UPDATE "AppUsers" SET "IsAdmin" = true WHERE "Email" = '…'`.
 

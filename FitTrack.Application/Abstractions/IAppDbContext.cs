@@ -27,6 +27,9 @@ public interface IAppDbContext
     DbSet<BloodPressureReading> BloodPressureReadings { get; }
     DbSet<ColdEpisode> ColdEpisodes { get; }
     DbSet<CardioSession> CardioSessions { get; }
+    DbSet<PelvicFloorProgram> PelvicFloorPrograms { get; }
+    DbSet<PelvicFloorSessionLog> PelvicFloorSessionLogs { get; }
+    DbSet<PelvicFloorDailyCheckIn> PelvicFloorDailyCheckIns { get; }
 
     DbSet<Food> Foods { get; }
     DbSet<Recipe> Recipes { get; }

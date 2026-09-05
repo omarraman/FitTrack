@@ -28,6 +28,9 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<ColdEpisode> ColdEpisodes => Set<ColdEpisode>();
 
     public DbSet<CardioSession> CardioSessions => Set<CardioSession>();
+    public DbSet<PelvicFloorProgram> PelvicFloorPrograms => Set<PelvicFloorProgram>();
+    public DbSet<PelvicFloorSessionLog> PelvicFloorSessionLogs => Set<PelvicFloorSessionLog>();
+    public DbSet<PelvicFloorDailyCheckIn> PelvicFloorDailyCheckIns => Set<PelvicFloorDailyCheckIn>();
 
     public DbSet<Food> Foods => Set<Food>();
     public DbSet<Recipe> Recipes => Set<Recipe>();
@@ -183,6 +186,48 @@ public class AppDbContext : DbContext, IAppDbContext
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.UserId);
+        });
+
+        mb.Entity<PelvicFloorProgram>(e =>
+        {
+            e.Property(x => x.UserId).IsRequired();
+            e.Property(x => x.StartDate).IsRequired();
+            e.Property(x => x.Status).HasConversion<int>();
+            e.Property(x => x.Notes).HasMaxLength(2000);
+            e.HasMany(x => x.Sessions)
+                .WithOne(x => x.PelvicFloorProgram!)
+                .HasForeignKey(x => x.PelvicFloorProgramId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.CheckIns)
+                .WithOne(x => x.PelvicFloorProgram!)
+                .HasForeignKey(x => x.PelvicFloorProgramId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<AppUser>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => new { x.UserId, x.Status });
+            e.HasIndex(x => x.StartDate);
+        });
+
+        mb.Entity<PelvicFloorSessionLog>(e =>
+        {
+            e.Property(x => x.PelvicFloorProgramId).IsRequired();
+            e.Property(x => x.SessionDate).IsRequired();
+            e.Property(x => x.Outcome).HasConversion<int>();
+            e.Property(x => x.Notes).HasMaxLength(1000);
+            e.HasIndex(x => x.SessionDate);
+            e.HasIndex(x => new { x.PelvicFloorProgramId, x.SessionDate }).IsUnique();
+        });
+
+        mb.Entity<PelvicFloorDailyCheckIn>(e =>
+        {
+            e.Property(x => x.PelvicFloorProgramId).IsRequired();
+            e.Property(x => x.CheckInDate).IsRequired();
+            e.Property(x => x.Notes).HasMaxLength(1000);
+            e.HasIndex(x => x.CheckInDate);
+            e.HasIndex(x => new { x.PelvicFloorProgramId, x.CheckInDate }).IsUnique();
         });
 
         // --- Nutrition ---
