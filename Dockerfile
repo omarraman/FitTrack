@@ -15,10 +15,8 @@ COPY FitTrack.Domain/FitTrack.Domain.csproj             FitTrack.Domain/
 COPY FitTrack.Application/FitTrack.Application.csproj   FitTrack.Application/
 COPY FitTrack.Infrastructure/FitTrack.Infrastructure.csproj FitTrack.Infrastructure/
 COPY FitTrack.Web/FitTrack.Web.csproj                   FitTrack.Web/
-COPY FitTrack.Tests/FitTrack.Tests.csproj               FitTrack.Tests/
-COPY SourceArchiver/SourceArchiver.csproj               SourceArchiver/
 
-RUN dotnet restore FitTrack.sln
+RUN dotnet restore FitTrack.Web/FitTrack.Web.csproj
 
 # Copy the rest of the source and publish
 COPY . .

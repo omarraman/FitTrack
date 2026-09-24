@@ -13,8 +13,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FitTrack.Web", "FitTrack.We
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FitTrack.Tests", "FitTrack.Tests\FitTrack.Tests.csproj", "{8C9FD4D2-95DB-4E82-8A7E-A919799F9372}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SourceArchiver", "SourceArchiver\SourceArchiver.csproj", "{90F4BA2D-B62C-439B-8BAA-2AA8195154F4}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,9 +42,5 @@ HideSolutionNode = FALSE
 		{8C9FD4D2-95DB-4E82-8A7E-A919799F9372}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8C9FD4D2-95DB-4E82-8A7E-A919799F9372}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8C9FD4D2-95DB-4E82-8A7E-A919799F9372}.Release|Any CPU.Build.0 = Release|Any CPU
-		{90F4BA2D-B62C-439B-8BAA-2AA8195154F4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{90F4BA2D-B62C-439B-8BAA-2AA8195154F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{90F4BA2D-B62C-439B-8BAA-2AA8195154F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{90F4BA2D-B62C-439B-8BAA-2AA8195154F4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
