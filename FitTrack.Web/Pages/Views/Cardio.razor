@@ -4,6 +4,10 @@
 
 <h1>Cardio sessions</h1>
 
+<div style="margin-bottom:16px;">
+    <a class="btn btn-ghost" href="/cardio/progress">View watts progress</a>
+</div>
+
 <div class="card">
     <h3>@(_editingId is null ? "Log new session" : "Edit session")</h3>
     <div class="form-row">
@@ -58,18 +62,18 @@
         <table class="table">
             <thead>
                 <tr>
-                    <th>Date</th>
-                    <th>Duration</th>
-                    <th>Calories</th>
-                    <th>Avg W</th>
-                    <th>Max km/h</th>
-                    <th>Max HR</th>
-                    <th>Notes</th>
+                    <th><button class="sort-button" @onclick='() => SortBy("date")'>Date @SortIndicator("date")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("duration")'>Duration @SortIndicator("duration")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("calories")'>Calories @SortIndicator("calories")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("watts")'>Avg W @SortIndicator("watts")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("speed")'>Max km/h @SortIndicator("speed")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("heartRate")'>Max HR @SortIndicator("heartRate")</button></th>
+                    <th><button class="sort-button" @onclick='() => SortBy("notes")'>Notes @SortIndicator("notes")</button></th>
                     <th style="width:120px;"></th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var s in _sessions)
+                @foreach (var s in SortedSessions)
                 {
                     <tr>
                         <td>@s.SessionDate.ToString("yyyy-MM-dd")</td>
@@ -84,7 +88,7 @@
                             }
                             else
                             {
-                                <span style="color:var(--text-dim);">—</span>
+                                <span style="color:var(--text-dim);">-</span>
                             }
                         </td>
                         <td style="color:var(--text-dim);">@s.Notes</td>
@@ -103,6 +107,8 @@
     private List<CardioSessionDto> _sessions = new();
     private bool _busy;
     private string? _error;
+    private string _sortColumn = "date";
+    private bool _sortDescending = true;
 
     // form state
     private int? _editingId;
@@ -117,6 +123,39 @@
     protected override async Task OnInitializedAsync() => await Reload();
 
     private async Task Reload() => _sessions = await CardioSvc.ListAsync();
+
+    private IEnumerable<CardioSessionDto> SortedSessions => _sortColumn switch
+    {
+        "duration" => SortByValue(s => s.DurationMinutes),
+        "calories" => SortByValue(s => s.Calories),
+        "watts" => SortByValue(s => s.Watts),
+        "speed" => SortByValue(s => s.MaxSpeedKph),
+        "heartRate" => SortByValue(s => s.MaxHeartRate),
+        "notes" => SortByValue(s => s.Notes ?? string.Empty),
+        _ => SortByValue(s => s.SessionDate)
+    };
+
+    private IEnumerable<CardioSessionDto> SortByValue<TKey>(Func<CardioSessionDto, TKey> selector)
+    {
+        var sorted = _sortDescending
+            ? _sessions.OrderByDescending(selector)
+            : _sessions.OrderBy(selector);
+        return sorted.ThenByDescending(s => s.Id);
+    }
+
+    private void SortBy(string column)
+    {
+        if (_sortColumn == column)
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = true;
+        }
+    }
+
+    private string SortIndicator(string column) =>
+        _sortColumn == column ? (_sortDescending ? "(desc)" : "(asc)") : "";
 
     private async Task Save()
     {

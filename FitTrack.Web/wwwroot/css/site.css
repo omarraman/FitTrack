@@ -101,6 +101,17 @@ h3 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--text-dim);
 }
 .table th { color: var(--text-dim); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
 .table tr:last-child td { border-bottom: none; }
+.sort-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    cursor: pointer;
+}
+.sort-button:hover { color: var(--text); }
 
 input, select, textarea {
     background: var(--panel-2);
@@ -702,4 +713,3 @@ input[type="date"], input[type="datetime-local"] { width: 180px; }
         display: none;
     }
 }
-
